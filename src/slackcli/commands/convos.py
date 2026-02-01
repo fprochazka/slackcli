@@ -1,12 +1,11 @@
 """Conversations command group for Slack CLI."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 import typer
 from rich.console import Console
-from rich.table import Table
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -24,6 +23,8 @@ console = Console()
 logger = get_logger(__name__)
 
 CACHE_NAME = "conversations"
+USERS_CACHE_NAME = "users"
+CACHE_MAX_AGE_HOURS = 6
 
 
 @dataclass
@@ -37,10 +38,13 @@ class Conversation:
     is_group: bool
     is_im: bool
     is_mpim: bool
+    is_member: bool
     topic: str
     purpose: str
     num_members: int
     created: int  # Unix timestamp
+    user_id: str | None = None  # For DMs, the other user's ID
+    member_ids: list[str] | None = None  # For group DMs, list of member IDs
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> "Conversation":
@@ -48,8 +52,11 @@ class Conversation:
         # Handle different conversation types
         # For IMs, the name is the user ID
         name = data.get("name", "")
-        if not name and data.get("is_im"):
-            name = f"DM:{data.get('user', 'unknown')}"
+        user_id = None
+        if data.get("is_im"):
+            user_id = data.get("user")
+            if not name:
+                name = f"DM:{user_id or 'unknown'}"
         if not name and data.get("is_mpim"):
             name = data.get("name", "Group DM")
 
@@ -61,10 +68,13 @@ class Conversation:
             is_group=data.get("is_group", False),
             is_im=data.get("is_im", False),
             is_mpim=data.get("is_mpim", False),
+            is_member=data.get("is_member", False),
             topic=data.get("topic", {}).get("value", "") if isinstance(data.get("topic"), dict) else "",
             purpose=data.get("purpose", {}).get("value", "") if isinstance(data.get("purpose"), dict) else "",
             num_members=data.get("num_members", 0),
             created=data.get("created", 0),
+            user_id=user_id,
+            member_ids=None,  # Will be populated separately for mpim
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -77,10 +87,13 @@ class Conversation:
             "is_group": self.is_group,
             "is_im": self.is_im,
             "is_mpim": self.is_mpim,
+            "is_member": self.is_member,
             "topic": self.topic,
             "purpose": self.purpose,
             "num_members": self.num_members,
             "created": self.created,
+            "user_id": self.user_id,
+            "member_ids": self.member_ids,
         }
 
     @classmethod
@@ -94,10 +107,13 @@ class Conversation:
             is_group=data.get("is_group", False),
             is_im=data.get("is_im", False),
             is_mpim=data.get("is_mpim", False),
+            is_member=data.get("is_member", False),
             topic=data.get("topic", ""),
             purpose=data.get("purpose", ""),
             num_members=data.get("num_members", 0),
             created=data.get("created", 0),
+            user_id=data.get("user_id"),
+            member_ids=data.get("member_ids"),
         )
 
     def get_type(self) -> str:
@@ -115,11 +131,99 @@ class Conversation:
         return "Unknown"
 
 
-def fetch_all_conversations(client: WebClient) -> list[Conversation]:
+def load_users_cache(org_name: str) -> dict[str, str]:
+    """Load user ID to name mapping from cache.
+
+    Args:
+        org_name: The organization name.
+
+    Returns:
+        Dictionary mapping user ID to display name.
+    """
+    cache_data = load_cache(org_name, USERS_CACHE_NAME)
+    if cache_data is None:
+        return {}
+    return cache_data.get("data", {}).get("users", {})
+
+
+def save_users_cache(org_name: str, users: dict[str, str]) -> None:
+    """Save user ID to name mapping to cache.
+
+    Args:
+        org_name: The organization name.
+        users: Dictionary mapping user ID to display name.
+    """
+    data = {"users": users}
+    save_cache(org_name, USERS_CACHE_NAME, data)
+
+
+def fetch_user_info(client: WebClient, user_ids: list[str], existing_users: dict[str, str]) -> dict[str, str]:
+    """Fetch user info for given user IDs.
+
+    Args:
+        client: The Slack WebClient.
+        user_ids: List of user IDs to fetch.
+        existing_users: Already cached user info.
+
+    Returns:
+        Updated dictionary mapping user ID to display name.
+    """
+    users = existing_users.copy()
+
+    # Filter out already known users
+    unknown_ids = [uid for uid in user_ids if uid and uid not in users]
+
+    if not unknown_ids:
+        return users
+
+    logger.debug(f"Fetching info for {len(unknown_ids)} unknown users")
+
+    for user_id in unknown_ids:
+        try:
+            response = client.users_info(user=user_id)
+            if response["ok"]:
+                user_data = response.get("user", {})
+                # Prefer display_name, fall back to real_name, then name
+                display_name = (
+                    user_data.get("profile", {}).get("display_name")
+                    or user_data.get("profile", {}).get("real_name")
+                    or user_data.get("real_name")
+                    or user_data.get("name")
+                    or user_id
+                )
+                users[user_id] = display_name
+        except SlackApiError as e:
+            logger.debug(f"Failed to fetch user {user_id}: {e}")
+            users[user_id] = user_id  # Use ID as fallback
+
+    return users
+
+
+def fetch_mpim_members(client: WebClient, conversation_id: str) -> list[str]:
+    """Fetch member IDs for a group DM (mpim).
+
+    Args:
+        client: The Slack WebClient.
+        conversation_id: The conversation ID.
+
+    Returns:
+        List of member user IDs.
+    """
+    try:
+        response = client.conversations_members(channel=conversation_id, limit=100)
+        if response["ok"]:
+            return response.get("members", [])
+    except SlackApiError as e:
+        logger.debug(f"Failed to fetch members for {conversation_id}: {e}")
+    return []
+
+
+def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversation]:
     """Fetch all conversations from Slack API with pagination.
 
     Args:
         client: The Slack WebClient.
+        org_name: The organization name for caching users.
 
     Returns:
         List of all conversations.
@@ -159,6 +263,31 @@ def fetch_all_conversations(client: WebClient) -> list[Conversation]:
             raise typer.Exit(1) from None
 
     logger.debug(f"Fetched {len(conversations)} conversations total")
+
+    # Collect user IDs that need to be resolved
+    user_ids_to_fetch: set[str] = set()
+
+    # Get user IDs from DMs
+    for convo in conversations:
+        if convo.is_im and convo.user_id:
+            user_ids_to_fetch.add(convo.user_id)
+
+    # Fetch members for group DMs (mpim)
+    mpim_convos = [c for c in conversations if c.is_mpim]
+    if mpim_convos:
+        console.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
+        for convo in mpim_convos:
+            member_ids = fetch_mpim_members(client, convo.id)
+            convo.member_ids = member_ids
+            user_ids_to_fetch.update(member_ids)
+
+    # Fetch user info
+    if user_ids_to_fetch:
+        console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
+        existing_users = load_users_cache(org_name)
+        users = fetch_user_info(client, list(user_ids_to_fetch), existing_users)
+        save_users_cache(org_name, users)
+
     return conversations
 
 
@@ -196,46 +325,107 @@ def save_conversations_to_cache(org_name: str, conversations: list[Conversation]
     logger.debug(f"Saved {len(conversations)} conversations to {cache_path}")
 
 
-def display_conversations(conversations: list[Conversation]) -> None:
-    """Display conversations in a table.
+def get_display_name(convo: Conversation, users: dict[str, str]) -> str:
+    """Get the display name for a conversation.
+
+    Args:
+        convo: The conversation.
+        users: Dictionary mapping user ID to display name.
+
+    Returns:
+        Human-readable display name.
+    """
+    if convo.is_im and convo.user_id:
+        return users.get(convo.user_id, convo.user_id)
+    if convo.is_mpim and convo.member_ids:
+        # Sort member names alphabetically
+        member_names = sorted(users.get(uid, uid) for uid in convo.member_ids)
+        return ", ".join(member_names)
+    return convo.name or "(no name)"
+
+
+def display_conversations(conversations: list[Conversation], users: dict[str, str]) -> None:
+    """Display conversations in a simple list format.
 
     Args:
         conversations: List of conversations to display.
+        users: Dictionary mapping user ID to display name.
     """
-    table = Table(title="Conversations")
-
-    table.add_column("ID", style="dim")
-    table.add_column("Name", style="cyan")
-    table.add_column("Type", style="green")
-    table.add_column("Members", justify="right")
-    table.add_column("Private", justify="center")
-    table.add_column("Created", style="dim")
-
     # Sort by type and name
     sorted_convos = sorted(
         conversations,
         key=lambda c: (
             0 if c.is_channel and not c.is_private else 1 if c.is_channel else 2 if c.is_group else 3,
-            c.name.lower(),
+            get_display_name(c, users).lower(),
         ),
     )
 
     for convo in sorted_convos:
-        created_str = ""
-        if convo.created:
-            created_str = datetime.fromtimestamp(convo.created).strftime("%Y-%m-%d")
+        display_name = get_display_name(convo, users)
+        convo_type = convo.get_type()
+        print(f"{convo.id}: {display_name} ({convo_type})")
 
-        table.add_row(
-            convo.id,
-            convo.name or "(no name)",
-            convo.get_type(),
-            str(convo.num_members) if convo.num_members else "-",
-            "Yes" if convo.is_private else "No",
-            created_str,
-        )
-
-    console.print(table)
     console.print(f"\n[dim]Total: {len(conversations)} conversations[/dim]")
+
+
+def is_cache_expired(org_name: str, cache_name: str) -> bool:
+    """Check if the cache is older than CACHE_MAX_AGE_HOURS.
+
+    Args:
+        org_name: The organization name.
+        cache_name: The name of the cache.
+
+    Returns:
+        True if cache is expired or doesn't exist.
+    """
+    cache_age = get_cache_age(org_name, cache_name)
+    if cache_age is None:
+        return True
+    return datetime.now() - cache_age > timedelta(hours=CACHE_MAX_AGE_HOURS)
+
+
+def filter_conversations(
+    conversations: list[Conversation],
+    dms: bool = False,
+    private: bool = False,
+    public: bool = False,
+    member: bool = False,
+    non_member: bool = False,
+) -> list[Conversation]:
+    """Filter conversations based on flags.
+
+    Args:
+        conversations: List of conversations to filter.
+        dms: Show only DMs and group DMs.
+        private: Show only private channels.
+        public: Show only public channels.
+        member: Show only channels where user is a member.
+        non_member: Show only channels where user is NOT a member.
+
+    Returns:
+        Filtered list of conversations.
+    """
+    result = conversations
+
+    # Apply type filters (OR logic)
+    type_filters_active = dms or private or public
+    if type_filters_active:
+        filtered = []
+        for convo in result:
+            is_dm_match = dms and (convo.is_im or convo.is_mpim)
+            is_private_match = private and convo.is_channel and convo.is_private
+            is_public_match = public and convo.is_channel and not convo.is_private
+            if is_dm_match or is_private_match or is_public_match:
+                filtered.append(convo)
+        result = filtered
+
+    # Apply membership filters (AND logic with type filters)
+    if member:
+        result = [c for c in result if c.is_member]
+    if non_member:
+        result = [c for c in result if not c.is_member]
+
+    return result
 
 
 @app.command("list")
@@ -248,6 +438,41 @@ def list_conversations(
             help="Force refresh the cache from Slack API.",
         ),
     ] = False,
+    dms: Annotated[
+        bool,
+        typer.Option(
+            "--dms",
+            help="Show only DMs and group DMs.",
+        ),
+    ] = False,
+    private: Annotated[
+        bool,
+        typer.Option(
+            "--private",
+            help="Show only private channels.",
+        ),
+    ] = False,
+    public: Annotated[
+        bool,
+        typer.Option(
+            "--public",
+            help="Show only public channels.",
+        ),
+    ] = False,
+    member: Annotated[
+        bool,
+        typer.Option(
+            "--member",
+            help="Show only channels where you are a member.",
+        ),
+    ] = False,
+    non_member: Annotated[
+        bool,
+        typer.Option(
+            "--non-member",
+            help="Show only channels where you are NOT a member.",
+        ),
+    ] = False,
 ) -> None:
     """List all Slack conversations (channels, DMs, groups)."""
     ctx = get_context()
@@ -255,9 +480,15 @@ def list_conversations(
     org_name = org.name
 
     conversations: list[Conversation] | None = None
+    needs_refresh = refresh
+
+    # Check if cache is expired (older than 6 hours)
+    if not needs_refresh and is_cache_expired(org_name, CACHE_NAME):
+        console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
+        needs_refresh = True
 
     # Try to load from cache unless refresh is requested
-    if not refresh:
+    if not needs_refresh:
         conversations = load_conversations_from_cache(org_name)
         if conversations is not None:
             cache_age = get_cache_age(org_name, CACHE_NAME)
@@ -269,8 +500,21 @@ def list_conversations(
     if conversations is None:
         console.print("[dim]Fetching conversations from Slack API...[/dim]")
         client = WebClient(token=org.token)
-        conversations = fetch_all_conversations(client)
+        conversations = fetch_all_conversations(client, org_name)
         save_conversations_to_cache(org_name, conversations)
         console.print("[green]Cache updated successfully[/green]\n")
 
-    display_conversations(conversations)
+    # Load users cache for display names
+    users = load_users_cache(org_name)
+
+    # Apply filters
+    filtered_conversations = filter_conversations(
+        conversations,
+        dms=dms,
+        private=private,
+        public=public,
+        member=member,
+        non_member=non_member,
+    )
+
+    display_conversations(filtered_conversations, users)
