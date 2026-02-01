@@ -12,18 +12,19 @@ from slack_sdk.errors import SlackApiError
 from ..cache import get_cache_age, load_cache, save_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
+from ..users import get_user_display_names
 
 app = typer.Typer(
     name="convos",
     help="Manage Slack conversations (channels, DMs, groups).",
     no_args_is_help=True,
+    rich_markup_mode=None,
 )
 
 console = Console()
 logger = get_logger(__name__)
 
 CACHE_NAME = "conversations"
-USERS_CACHE_NAME = "users"
 CACHE_MAX_AGE_HOURS = 6
 
 
@@ -131,74 +132,6 @@ class Conversation:
         return "Unknown"
 
 
-def load_users_cache(org_name: str) -> dict[str, str]:
-    """Load user ID to name mapping from cache.
-
-    Args:
-        org_name: The organization name.
-
-    Returns:
-        Dictionary mapping user ID to display name.
-    """
-    cache_data = load_cache(org_name, USERS_CACHE_NAME)
-    if cache_data is None:
-        return {}
-    return cache_data.get("data", {}).get("users", {})
-
-
-def save_users_cache(org_name: str, users: dict[str, str]) -> None:
-    """Save user ID to name mapping to cache.
-
-    Args:
-        org_name: The organization name.
-        users: Dictionary mapping user ID to display name.
-    """
-    data = {"users": users}
-    save_cache(org_name, USERS_CACHE_NAME, data)
-
-
-def fetch_user_info(client: WebClient, user_ids: list[str], existing_users: dict[str, str]) -> dict[str, str]:
-    """Fetch user info for given user IDs.
-
-    Args:
-        client: The Slack WebClient.
-        user_ids: List of user IDs to fetch.
-        existing_users: Already cached user info.
-
-    Returns:
-        Updated dictionary mapping user ID to display name.
-    """
-    users = existing_users.copy()
-
-    # Filter out already known users
-    unknown_ids = [uid for uid in user_ids if uid and uid not in users]
-
-    if not unknown_ids:
-        return users
-
-    logger.debug(f"Fetching info for {len(unknown_ids)} unknown users")
-
-    for user_id in unknown_ids:
-        try:
-            response = client.users_info(user=user_id)
-            if response["ok"]:
-                user_data = response.get("user", {})
-                # Prefer display_name, fall back to real_name, then name
-                display_name = (
-                    user_data.get("profile", {}).get("display_name")
-                    or user_data.get("profile", {}).get("real_name")
-                    or user_data.get("real_name")
-                    or user_data.get("name")
-                    or user_id
-                )
-                users[user_id] = display_name
-        except SlackApiError as e:
-            logger.debug(f"Failed to fetch user {user_id}: {e}")
-            users[user_id] = user_id  # Use ID as fallback
-
-    return users
-
-
 def fetch_mpim_members(client: WebClient, conversation_id: str) -> list[str]:
     """Fetch member IDs for a group DM (mpim).
 
@@ -281,12 +214,11 @@ def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversati
             convo.member_ids = member_ids
             user_ids_to_fetch.update(member_ids)
 
-    # Fetch user info
+    # Fetch user info (uses new per-user file caching with lazy loading)
     if user_ids_to_fetch:
         console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
-        existing_users = load_users_cache(org_name)
-        users = fetch_user_info(client, list(user_ids_to_fetch), existing_users)
-        save_users_cache(org_name, users)
+        # This will fetch and cache users individually with 24h soft expiry
+        get_user_display_names(client, org_name, list(user_ids_to_fetch))
 
     return conversations
 
@@ -420,10 +352,13 @@ def filter_conversations(
         result = filtered
 
     # Apply membership filters (AND logic with type filters)
+    # Note: DMs (is_im) and group DMs (is_mpim) are always considered "member" conversations
+    # since you're always a member of your own DMs
     if member:
-        result = [c for c in result if c.is_member]
+        result = [c for c in result if c.is_member or c.is_im or c.is_mpim]
     if non_member:
-        result = [c for c in result if not c.is_member]
+        # DMs/MPIMs are never "non-member" since you're always a member
+        result = [c for c in result if not c.is_member and not c.is_im and not c.is_mpim]
 
     return result
 
@@ -497,15 +432,12 @@ def list_conversations(
                 console.print("[dim]Use --refresh to update from Slack API[/dim]\n")
 
     # Fetch from API if no cache or refresh requested
+    client = WebClient(token=org.token) if conversations is None else None
     if conversations is None:
         console.print("[dim]Fetching conversations from Slack API...[/dim]")
-        client = WebClient(token=org.token)
         conversations = fetch_all_conversations(client, org_name)
         save_conversations_to_cache(org_name, conversations)
         console.print("[green]Cache updated successfully[/green]\n")
-
-    # Load users cache for display names
-    users = load_users_cache(org_name)
 
     # Apply filters
     filtered_conversations = filter_conversations(
@@ -516,5 +448,18 @@ def list_conversations(
         member=member,
         non_member=non_member,
     )
+
+    # Collect user IDs needed for display
+    user_ids_to_fetch: set[str] = set()
+    for convo in filtered_conversations:
+        if convo.is_im and convo.user_id:
+            user_ids_to_fetch.add(convo.user_id)
+        if convo.is_mpim and convo.member_ids:
+            user_ids_to_fetch.update(convo.member_ids)
+
+    # Get user display names (uses per-user file caching with 24h soft expiry)
+    if client is None:
+        client = WebClient(token=org.token)
+    users = get_user_display_names(client, org_name, list(user_ids_to_fetch))
 
     display_conversations(filtered_conversations, users)

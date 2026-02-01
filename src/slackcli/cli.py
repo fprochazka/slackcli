@@ -16,7 +16,7 @@ app = typer.Typer(
     name="slack",
     help="A command-line interface for Slack.",
     no_args_is_help=True,
-    rich_markup_mode="rich",
+    rich_markup_mode=None,
 )
 
 console = Console()
