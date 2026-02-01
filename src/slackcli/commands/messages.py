@@ -592,7 +592,7 @@ def output_json_messages(
     }
 
     # Use plain print() to avoid Rich formatting
-    print(json_module.dumps(output))
+    print(json_module.dumps(output, indent=2, ensure_ascii=False))
 
 
 def messages_command(
@@ -739,7 +739,11 @@ def messages_command(
 
     if not fetched_messages:
         if output_json:
-            print(json_module.dumps({"channel": channel_id, "channel_name": channel_name, "messages": []}))
+            print(
+                json_module.dumps(
+                    {"channel": channel_id, "channel_name": channel_name, "messages": []}, indent=2, ensure_ascii=False
+                )
+            )
         else:
             console.print("[yellow]No messages found.[/yellow]")
         return
