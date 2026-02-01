@@ -395,6 +395,7 @@ def display_channel_messages(
     users: dict[str, str],
     channels: dict[str, str],
     reactions_mode: str,
+    with_threads: bool = False,
 ) -> None:
     """Display channel messages.
 
@@ -403,6 +404,7 @@ def display_channel_messages(
         users: Dictionary mapping user ID to username.
         channels: Dictionary mapping channel ID to channel name.
         reactions_mode: How to display reactions.
+        with_threads: Whether to display inline thread replies.
     """
     # Messages come in reverse chronological order, reverse for display
     for msg in reversed(messages):
@@ -411,6 +413,7 @@ def display_channel_messages(
         text = msg.get("text", "")
         reply_count = msg.get("reply_count", 0)
         reactions = msg.get("reactions", [])
+        replies = msg.get("replies", [])
 
         # Resolve mentions in text
         text = resolve_slack_mentions(text, users, channels)
@@ -436,7 +439,10 @@ def display_channel_messages(
         # Print metadata line (replies, reactions)
         meta_parts = []
         if reply_count > 0:
-            meta_parts.append(f"[{reply_count} replies, thread_ts={ts}]")
+            if with_threads and replies:
+                meta_parts.append(f"[{reply_count} replies]")
+            else:
+                meta_parts.append(f"[{reply_count} replies, thread_ts={ts}]")
 
         reactions_str = format_reactions(reactions, reactions_mode, users)
         if reactions_str:
@@ -444,6 +450,39 @@ def display_channel_messages(
 
         if meta_parts:
             print(f"  {' '.join(meta_parts)}")
+
+        # Display inline thread replies if present
+        if with_threads and replies:
+            print()  # Blank line before replies
+            for reply in replies:
+                reply_ts = reply.get("ts", "")
+                reply_user_id = reply.get("user", "")
+                reply_text = reply.get("text", "")
+                reply_reactions = reply.get("reactions", [])
+
+                # Resolve mentions in reply text
+                reply_text = resolve_slack_mentions(reply_text, users, channels)
+
+                # Format timestamp
+                try:
+                    reply_dt = slack_ts_to_datetime(reply_ts)
+                    reply_time_str = reply_dt.strftime("%Y-%m-%d %H:%M:%S")
+                except (ValueError, OSError):
+                    reply_time_str = reply_ts
+
+                # Get user display name
+                reply_user_name = users.get(reply_user_id, reply_user_id) if reply_user_id else "(unknown)"
+                if reply_user_name and not reply_user_name.startswith("@"):
+                    reply_user_name = f"@{reply_user_name}"
+
+                # Print indented reply
+                print(f"    {reply_time_str}  {reply_user_name}")
+                print(format_message_text(reply_text, indent="      "))
+
+                # Print reactions for reply
+                reply_reactions_str = format_reactions(reply_reactions, reactions_mode, users)
+                if reply_reactions_str:
+                    print(f"      {reply_reactions_str}")
 
         print()  # Blank line between messages
 
@@ -533,6 +572,7 @@ def output_json_messages(
     channels: dict[str, str],
     channel_id: str,
     channel_name: str,
+    with_threads: bool = False,
 ) -> None:
     """Output messages as JSON.
 
@@ -544,6 +584,7 @@ def output_json_messages(
         channels: Dictionary mapping channel ID to channel name.
         channel_id: The channel ID.
         channel_name: The channel name.
+        with_threads: Whether to include thread replies.
     """
     output_messages = []
 
@@ -555,6 +596,7 @@ def output_json_messages(
         thread_ts = msg.get("thread_ts")
         reply_count = msg.get("reply_count", 0)
         reactions_data = msg.get("reactions", [])
+        replies_data = msg.get("replies", [])
 
         # Resolve mentions in text
         resolved_text = resolve_slack_mentions(text, users, channels)
@@ -583,6 +625,45 @@ def output_json_messages(
             "reply_count": reply_count,
             "reactions": formatted_reactions,
         }
+
+        # Add replies if with_threads is enabled and there are replies
+        if with_threads and replies_data:
+            formatted_replies = []
+            for reply in replies_data:
+                reply_ts = reply.get("ts", "")
+                reply_user_id = reply.get("user", "")
+                reply_text = reply.get("text", "")
+                reply_reactions_data = reply.get("reactions", [])
+
+                # Resolve mentions in reply text
+                resolved_reply_text = resolve_slack_mentions(reply_text, users, channels)
+
+                # Get username
+                reply_user_name = users.get(reply_user_id, reply_user_id) if reply_user_id else None
+
+                # Format reactions with usernames
+                formatted_reply_reactions = []
+                for reaction in reply_reactions_data:
+                    reaction_users = [users.get(uid, uid) for uid in reaction.get("users", [])]
+                    formatted_reply_reactions.append(
+                        {
+                            "name": reaction.get("name", ""),
+                            "count": reaction.get("count", 0),
+                            "users": reaction_users,
+                        }
+                    )
+
+                formatted_replies.append(
+                    {
+                        "ts": reply_ts,
+                        "user_id": reply_user_id,
+                        "user_name": reply_user_name,
+                        "text": resolved_reply_text,
+                        "reactions": formatted_reply_reactions,
+                    }
+                )
+            message_obj["replies"] = formatted_replies
+
         output_messages.append(message_obj)
 
     output = {
@@ -663,6 +744,13 @@ def messages_command(
         typer.Option(
             "--json",
             help="Output raw JSON instead of formatted text.",
+        ),
+    ] = False,
+    with_threads: Annotated[
+        bool,
+        typer.Option(
+            "--with-threads",
+            help="Fetch and display thread replies for messages with threads.",
         ),
     ] = False,
 ) -> None:
@@ -751,6 +839,22 @@ def messages_command(
     if not output_json:
         console.print(f"[dim]Found {len(fetched_messages)} messages[/dim]\n")
 
+    # Fetch thread replies if --with-threads is enabled and not already viewing a thread
+    if with_threads and thread_ts is None:
+        # Count messages with threads
+        messages_with_threads = [msg for msg in fetched_messages if msg.get("reply_count", 0) > 0]
+        if messages_with_threads and not output_json:
+            console.print(f"[dim]Fetching {len(messages_with_threads)} threads...[/dim]")
+
+        for msg in fetched_messages:
+            reply_count = msg.get("reply_count", 0)
+            if reply_count > 0:
+                msg_ts = msg.get("ts", "")
+                thread_messages = fetch_thread_replies(client, channel_id, msg_ts, reply_count + 1)
+                # Skip the first message (parent) to avoid duplication
+                if thread_messages:
+                    msg["replies"] = thread_messages[1:]
+
     # Collect user IDs for resolution
     user_ids: set[str] = set()
     for msg in fetched_messages:
@@ -765,6 +869,20 @@ def messages_command(
         if text:
             mentioned_users = re.findall(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", text)
             user_ids.update(mentioned_users)
+        # Collect user IDs from thread replies
+        if with_threads:
+            for reply in msg.get("replies", []):
+                if reply_user_id := reply.get("user"):
+                    user_ids.add(reply_user_id)
+                # Collect user IDs from reactions in replies
+                if reactions == "names" or output_json:
+                    for reaction in reply.get("reactions", []):
+                        user_ids.update(reaction.get("users", []))
+                # Collect user IDs from mentions in reply text
+                reply_text = reply.get("text", "")
+                if reply_text:
+                    mentioned_users = re.findall(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", reply_text)
+                    user_ids.update(mentioned_users)
 
     # Resolve user names
     users = get_user_display_names(client, org_name, list(user_ids))
@@ -774,8 +892,8 @@ def messages_command(
 
     # Output messages
     if output_json:
-        output_json_messages(fetched_messages, users, channels, channel_id, channel_name)
+        output_json_messages(fetched_messages, users, channels, channel_id, channel_name, with_threads)
     elif thread_ts:
         display_thread_messages(fetched_messages, users, channels, reactions)
     else:
-        display_channel_messages(fetched_messages, users, channels, reactions)
+        display_channel_messages(fetched_messages, users, channels, reactions, with_threads)
