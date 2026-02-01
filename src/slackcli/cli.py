@@ -1,7 +1,6 @@
 """CLI entry point for Slack CLI."""
 
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +8,8 @@ import typer
 from rich.console import Console
 
 from . import __version__
-from .config import Config, OrgConfig, get_config_path, load_config
+from .config import get_config_path, load_config
+from .context import get_context
 from .logging import error_console, get_logger, setup_logging
 
 app = typer.Typer(
@@ -22,33 +22,13 @@ app = typer.Typer(
 console = Console()
 logger = get_logger(__name__)
 
+# Global context reference (for use in this module)
+_ctx = get_context()
 
-@dataclass
-class Context:
-    """CLI context passed to all commands."""
+# Register command groups (imported here to avoid circular imports)
+from .commands import convos  # noqa: E402
 
-    config: Config | None = None
-    org_name: str | None = None
-    verbose: bool = False
-
-    def get_org(self) -> OrgConfig:
-        """Get the selected organization config."""
-        if self.config is None:
-            self.config = load_config()
-        return self.config.get_org(self.org_name)
-
-    def get_token(self) -> str:
-        """Get the token for the selected organization."""
-        return self.get_org().token
-
-
-# Global context instance
-_ctx = Context()
-
-
-def get_context() -> Context:
-    """Get the current CLI context."""
-    return _ctx
+app.add_typer(convos.app, name="convos")
 
 
 def version_callback(value: bool) -> None:
