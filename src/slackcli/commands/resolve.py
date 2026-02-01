@@ -32,6 +32,7 @@ class ParsedSlackUrl:
     message_ts: str
     thread_ts: str | None
     is_thread_reply: bool
+    workspace: str
 
 
 def parse_slack_url(url: str) -> ParsedSlackUrl:
@@ -55,6 +56,14 @@ def parse_slack_url(url: str) -> ParsedSlackUrl:
     # Validate hostname ends with slack.com
     if not parsed.hostname or not parsed.hostname.endswith("slack.com"):
         raise ValueError(f"Invalid Slack URL: hostname must end with slack.com, got '{parsed.hostname}'")
+
+    # Extract workspace subdomain from hostname
+    # e.g., "rohlikskillz.slack.com" -> "rohlikskillz"
+    hostname_parts = parsed.hostname.split(".")
+    if len(hostname_parts) < 3:
+        raise ValueError(f"Invalid Slack URL hostname format: {parsed.hostname}")
+
+    workspace = hostname_parts[0]
 
     # Parse path: /archives/<channel_id>/p<timestamp>
     path_match = re.match(r"^/archives/([A-Z0-9]+)/p(\d+)$", parsed.path)
@@ -87,6 +96,7 @@ def parse_slack_url(url: str) -> ParsedSlackUrl:
         message_ts=message_ts,
         thread_ts=thread_ts,
         is_thread_reply=is_thread_reply,
+        workspace=workspace,
     )
 
 
@@ -312,7 +322,17 @@ def resolve_command(
 
     # Get org context
     ctx = get_context()
-    org = ctx.get_org()
+
+    # Use subdomain from URL as fallback if --org was not specified
+    if ctx.org_name is None:
+        ctx.org_name = parsed.workspace
+
+    try:
+        org = ctx.get_org()
+    except ValueError as e:
+        error_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+
     org_name = org.name
 
     # Get channel name from cache
