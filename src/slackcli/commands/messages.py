@@ -10,6 +10,7 @@ from rich.console import Console
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+from ..blocks import get_message_text
 from ..cache import load_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
@@ -410,12 +411,14 @@ def display_channel_messages(
     for msg in reversed(messages):
         ts = msg.get("ts", "")
         user_id = msg.get("user", "")
-        text = msg.get("text", "")
         reply_count = msg.get("reply_count", 0)
         reactions = msg.get("reactions", [])
         replies = msg.get("replies", [])
 
-        # Resolve mentions in text
+        # Get message text, falling back to blocks/attachments if needed
+        text = get_message_text(msg, users, channels)
+
+        # Resolve any remaining mentions in text
         text = resolve_slack_mentions(text, users, channels)
 
         # Format timestamp
@@ -457,10 +460,12 @@ def display_channel_messages(
             for reply in replies:
                 reply_ts = reply.get("ts", "")
                 reply_user_id = reply.get("user", "")
-                reply_text = reply.get("text", "")
                 reply_reactions = reply.get("reactions", [])
 
-                # Resolve mentions in reply text
+                # Get reply text, falling back to blocks/attachments if needed
+                reply_text = get_message_text(reply, users, channels)
+
+                # Resolve any remaining mentions in reply text
                 reply_text = resolve_slack_mentions(reply_text, users, channels)
 
                 # Format timestamp
@@ -511,10 +516,12 @@ def display_thread_messages(
     # Display parent
     ts = parent.get("ts", "")
     user_id = parent.get("user", "")
-    text = parent.get("text", "")
     reactions = parent.get("reactions", [])
 
-    # Resolve mentions in text
+    # Get message text, falling back to blocks/attachments if needed
+    text = get_message_text(parent, users, channels)
+
+    # Resolve any remaining mentions in text
     text = resolve_slack_mentions(text, users, channels)
 
     try:
@@ -540,10 +547,12 @@ def display_thread_messages(
     for reply in replies:
         ts = reply.get("ts", "")
         user_id = reply.get("user", "")
-        text = reply.get("text", "")
         reactions = reply.get("reactions", [])
 
-        # Resolve mentions in text
+        # Get reply text, falling back to blocks/attachments if needed
+        text = get_message_text(reply, users, channels)
+
+        # Resolve any remaining mentions in text
         text = resolve_slack_mentions(text, users, channels)
 
         try:
@@ -592,13 +601,15 @@ def output_json_messages(
     for msg in reversed(messages):
         ts = msg.get("ts", "")
         user_id = msg.get("user", "")
-        text = msg.get("text", "")
         thread_ts = msg.get("thread_ts")
         reply_count = msg.get("reply_count", 0)
         reactions_data = msg.get("reactions", [])
         replies_data = msg.get("replies", [])
 
-        # Resolve mentions in text
+        # Get message text, falling back to blocks/attachments if needed
+        text = get_message_text(msg, users, channels)
+
+        # Resolve any remaining mentions in text
         resolved_text = resolve_slack_mentions(text, users, channels)
 
         # Get username
@@ -632,10 +643,12 @@ def output_json_messages(
             for reply in replies_data:
                 reply_ts = reply.get("ts", "")
                 reply_user_id = reply.get("user", "")
-                reply_text = reply.get("text", "")
                 reply_reactions_data = reply.get("reactions", [])
 
-                # Resolve mentions in reply text
+                # Get reply text, falling back to blocks/attachments if needed
+                reply_text = get_message_text(reply, users, channels)
+
+                # Resolve any remaining mentions in reply text
                 resolved_reply_text = resolve_slack_mentions(reply_text, users, channels)
 
                 # Get username
