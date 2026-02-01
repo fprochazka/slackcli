@@ -13,15 +13,13 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
-from ..cache import load_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
 from ..users import get_channel_names, get_user_display_names
+from .conversations import load_conversations_from_cache
 
 console = Console()
 logger = get_logger(__name__)
-
-CONVERSATIONS_CACHE_NAME = "conversations"
 
 
 @dataclass
@@ -110,16 +108,13 @@ def get_channel_name_from_cache(org_name: str, channel_id: str) -> str | None:
     Returns:
         Channel name or None if not found.
     """
-    cache_data = load_cache(org_name, CONVERSATIONS_CACHE_NAME)
-    if cache_data is None:
+    conversations = load_conversations_from_cache(org_name)
+    if conversations is None:
         return None
 
-    data = cache_data.get("data", {})
-    conversations = data.get("conversations", [])
-
     for convo in conversations:
-        if convo.get("id") == channel_id:
-            return convo.get("name")
+        if convo.id == channel_id:
+            return convo.name or None
 
     return None
 

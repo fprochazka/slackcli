@@ -11,15 +11,13 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
-from ..cache import load_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
 from ..users import get_channel_names, get_user_display_names
+from .conversations import load_conversations_from_cache
 
 console = Console()
 logger = get_logger(__name__)
-
-CONVERSATIONS_CACHE_NAME = "conversations"
 
 
 def datetime_to_slack_ts(dt: datetime) -> str:
@@ -120,21 +118,18 @@ def resolve_channel(org_name: str, channel_ref: str) -> tuple[str, str]:
     Raises:
         typer.Exit: If channel cannot be resolved.
     """
-    # Load conversations cache
-    cache_data = load_cache(org_name, CONVERSATIONS_CACHE_NAME)
-    if cache_data is None:
+    # Load conversations from cache (no API call, just read cache)
+    conversations = load_conversations_from_cache(org_name)
+    if conversations is None:
         error_console.print("[red]Conversations cache not found. Run 'slack conversations list' first.[/red]")
         raise typer.Exit(1)
-
-    data = cache_data.get("data", {})
-    conversations = data.get("conversations", [])
 
     # If it's already a channel ID (starts with C, D, or G and is alphanumeric)
     if re.match(r"^[CDG][A-Z0-9]+$", channel_ref):
         # Look up the name from cache
         for convo in conversations:
-            if convo.get("id") == channel_ref:
-                return channel_ref, convo.get("name", channel_ref)
+            if convo.id == channel_ref:
+                return channel_ref, convo.name or channel_ref
         # ID not found in cache, return ID as name
         return channel_ref, channel_ref
 
@@ -143,8 +138,8 @@ def resolve_channel(org_name: str, channel_ref: str) -> tuple[str, str]:
 
     # Search for matching channel
     for convo in conversations:
-        if convo.get("name") == channel_name:
-            return convo.get("id"), channel_name
+        if convo.name == channel_name:
+            return convo.id, channel_name
 
     # Not found
     error_console.print(f"[red]Channel '{channel_ref}' not found in cache.[/red]")

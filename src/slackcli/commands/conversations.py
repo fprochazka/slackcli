@@ -28,6 +28,22 @@ CACHE_NAME = "conversations"
 CACHE_MAX_AGE_HOURS = 6
 
 
+class ConversationLoadResult:
+    """Result of loading conversations with metadata about cache status."""
+
+    def __init__(
+        self,
+        conversations: list["Conversation"],
+        from_cache: bool,
+        cache_age: datetime | None = None,
+        refreshed: bool = False,
+    ):
+        self.conversations = conversations
+        self.from_cache = from_cache
+        self.cache_age = cache_age
+        self.refreshed = refreshed
+
+
 @dataclass
 class Conversation:
     """Represents a Slack conversation."""
@@ -316,6 +332,64 @@ def is_cache_expired(org_name: str, cache_name: str) -> bool:
     return datetime.now() - cache_age > timedelta(hours=CACHE_MAX_AGE_HOURS)
 
 
+def load_conversations(
+    client: WebClient,
+    org_name: str,
+    fresh: bool = False,
+) -> ConversationLoadResult:
+    """Load conversations, using cache unless fresh=True or cache expired.
+
+    The function handles all cache loading/saving internally:
+    - Check if cache exists and is not expired (6 hours)
+    - If cache valid and fresh=False, return cached data
+    - If cache expired or fresh=True, fetch from API and update cache
+
+    Args:
+        client: The Slack WebClient.
+        org_name: The organization name.
+        fresh: If True, force refresh from API regardless of cache state.
+
+    Returns:
+        ConversationLoadResult with conversations and cache metadata.
+    """
+    needs_refresh = fresh
+
+    # Check if cache is expired (older than 6 hours)
+    if not needs_refresh and is_cache_expired(org_name, CACHE_NAME):
+        console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
+        needs_refresh = True
+
+    # Try to load from cache unless refresh is needed
+    if not needs_refresh:
+        conversations = load_conversations_from_cache(org_name)
+        if conversations is not None:
+            cache_age = get_cache_age(org_name, CACHE_NAME)
+            if cache_age:
+                console.print(
+                    f"[dim]Using cached conversations (updated {cache_age.strftime('%Y-%m-%d %H:%M:%S')})[/dim]"
+                )
+                console.print("[dim]Use --refresh to update from Slack API[/dim]\n")
+            return ConversationLoadResult(
+                conversations=conversations,
+                from_cache=True,
+                cache_age=cache_age,
+                refreshed=False,
+            )
+
+    # Fetch from API
+    console.print("[dim]Fetching conversations from Slack API...[/dim]")
+    conversations = fetch_all_conversations(client, org_name)
+    save_conversations_to_cache(org_name, conversations)
+    console.print("[green]Cache updated successfully[/green]\n")
+
+    return ConversationLoadResult(
+        conversations=conversations,
+        from_cache=False,
+        cache_age=datetime.now(),
+        refreshed=True,
+    )
+
+
 def filter_conversations(
     conversations: list[Conversation],
     dms: bool = False,
@@ -414,30 +488,12 @@ def list_conversations(
     org = ctx.get_org()
     org_name = org.name
 
-    conversations: list[Conversation] | None = None
-    needs_refresh = refresh
+    # Create Slack client
+    client = WebClient(token=org.token)
 
-    # Check if cache is expired (older than 6 hours)
-    if not needs_refresh and is_cache_expired(org_name, CACHE_NAME):
-        console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
-        needs_refresh = True
-
-    # Try to load from cache unless refresh is requested
-    if not needs_refresh:
-        conversations = load_conversations_from_cache(org_name)
-        if conversations is not None:
-            cache_age = get_cache_age(org_name, CACHE_NAME)
-            if cache_age:
-                console.print(f"[dim]Using cached data from {cache_age.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
-                console.print("[dim]Use --refresh to update from Slack API[/dim]\n")
-
-    # Fetch from API if no cache or refresh requested
-    client = WebClient(token=org.token) if conversations is None else None
-    if conversations is None:
-        console.print("[dim]Fetching conversations from Slack API...[/dim]")
-        conversations = fetch_all_conversations(client, org_name)
-        save_conversations_to_cache(org_name, conversations)
-        console.print("[green]Cache updated successfully[/green]\n")
+    # Load conversations using the centralized function (handles caching internally)
+    result = load_conversations(client, org_name, fresh=refresh)
+    conversations = result.conversations
 
     # Apply filters
     filtered_conversations = filter_conversations(
@@ -458,8 +514,6 @@ def list_conversations(
             user_ids_to_fetch.update(convo.member_ids)
 
     # Get user display names (uses per-user file caching with 24h soft expiry)
-    if client is None:
-        client = WebClient(token=org.token)
     users = get_user_display_names(client, org_name, list(user_ids_to_fetch))
 
     display_conversations(filtered_conversations, users)

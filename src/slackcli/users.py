@@ -239,24 +239,25 @@ def fetch_user_from_api(client: WebClient, user_id: str) -> UserInfo | None:
     return None
 
 
-def get_user(client: WebClient, org_name: str, user_id: str) -> UserInfo | None:
-    """Get user info, fetching from API if not cached or expired.
+def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False) -> UserInfo | None:
+    """Get user info, using cache unless fresh=True or cache expired.
 
-    Uses lazy loading with soft expiry:
-    - If cached and not expired, return cached version
-    - If cached but expired, fetch fresh and update cache
+    Uses lazy loading with soft expiry (24 hours):
+    - If cached and not expired and fresh=False, return cached version
+    - If cached but expired, or fresh=True, fetch fresh and update cache
     - If not cached, fetch and cache
 
     Args:
         client: The Slack WebClient.
         org_name: The organization name.
         user_id: The Slack user ID.
+        fresh: If True, force refresh from API regardless of cache state.
 
     Returns:
         The UserInfo, or None if user could not be found.
     """
-    # Try to load from cache
-    cached_user = load_user_from_cache(org_name, user_id)
+    # Try to load from cache (unless forcing fresh)
+    cached_user = None if fresh else load_user_from_cache(org_name, user_id)
 
     if cached_user is not None:
         if not cached_user.is_expired():
@@ -331,13 +332,10 @@ def get_channel_names(org_name: str) -> dict[str, str]:
     Returns:
         Dictionary mapping channel ID to channel name.
     """
-    from .cache import load_cache
+    from .commands.conversations import load_conversations_from_cache
 
-    cache_data = load_cache(org_name, "conversations")
-    if cache_data is None:
+    conversations = load_conversations_from_cache(org_name)
+    if conversations is None:
         return {}
 
-    data = cache_data.get("data", {})
-    conversations = data.get("conversations", [])
-
-    return {convo.get("id"): convo.get("name", "") for convo in conversations if convo.get("id")}
+    return {convo.id: convo.name or "" for convo in conversations if convo.id}
