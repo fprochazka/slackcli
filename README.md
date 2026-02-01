@@ -4,9 +4,11 @@ A command-line interface for Slack, designed for both humans and AI agents.
 
 ## Installation
 
+First clone the repository, then:
+
 ```bash
 # Install with pipx (recommended)
-pipx install .
+pipx install -e -f .
 
 # Or install with uv
 uv tool install .
@@ -147,15 +149,6 @@ Machine-readable format for AI agents:
   ]
 }
 ```
-
-## Features
-
-- **Multi-org support** - Configure multiple Slack workspaces
-- **Caching** - Conversations cached for 6 hours, users for 24 hours
-- **Mention resolution** - `<@U123>` → `@username`, `<#C123>` → `#channel`
-- **Block Kit rendering** - Rich messages rendered as plain text
-- **Thread support** - View threads inline or separately
-- **Reactions** - Show emoji reactions with counts or usernames
 
 ## Developing
 
