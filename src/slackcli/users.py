@@ -4,17 +4,21 @@ This module provides per-user file caching with lazy loading and soft expiry.
 User info is stored in individual files at ~/.cache/slackcli/<org>/users/<userId>.json
 """
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from .cache import get_cache_dir
 from .logging import get_logger
+
+if TYPE_CHECKING:
+    from .client import SlackCli
 
 logger = get_logger(__name__)
 
@@ -37,7 +41,7 @@ class UserInfo:
     updated_at: str  # ISO format datetime
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "UserInfo":
+    def from_api(cls, data: dict[str, Any]) -> UserInfo:
         """Create a UserInfo from Slack API response data.
 
         Args:
@@ -81,7 +85,7 @@ class UserInfo:
         }
 
     @classmethod
-    def from_cache_dict(cls, data: dict[str, Any]) -> "UserInfo":
+    def from_cache_dict(cls, data: dict[str, Any]) -> UserInfo:
         """Create from cached dictionary.
 
         Args:
@@ -220,18 +224,18 @@ def save_user_to_cache(org_name: str, user: UserInfo) -> Path:
     return cache_path
 
 
-def fetch_user_from_api(client: WebClient, user_id: str) -> UserInfo | None:
+def fetch_user_from_api(slack: SlackCli, user_id: str) -> UserInfo | None:
     """Fetch a user from the Slack API.
 
     Args:
-        client: The Slack WebClient.
+        slack: The SlackCli client.
         user_id: The Slack user ID.
 
     Returns:
         The UserInfo, or None if not found.
     """
     try:
-        response = client.users_info(user=user_id)
+        response = slack.client.users_info(user=user_id)
         if response["ok"]:
             return UserInfo.from_api(response.get("user", {}))
     except SlackApiError as e:
@@ -239,7 +243,7 @@ def fetch_user_from_api(client: WebClient, user_id: str) -> UserInfo | None:
     return None
 
 
-def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False) -> UserInfo | None:
+def get_user(slack: SlackCli, user_id: str, fresh: bool = False) -> UserInfo | None:
     """Get user info, using cache unless fresh=True or cache expired.
 
     Uses lazy loading with soft expiry (24 hours):
@@ -248,8 +252,7 @@ def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False
     - If not cached, fetch and cache
 
     Args:
-        client: The Slack WebClient.
-        org_name: The organization name.
+        slack: The SlackCli client.
         user_id: The Slack user ID.
         fresh: If True, force refresh from API regardless of cache state.
 
@@ -257,7 +260,7 @@ def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False
         The UserInfo, or None if user could not be found.
     """
     # Try to load from cache (unless forcing fresh)
-    cached_user = None if fresh else load_user_from_cache(org_name, user_id)
+    cached_user = None if fresh else load_user_from_cache(slack.org_name, user_id)
 
     if cached_user is not None:
         if not cached_user.is_expired():
@@ -268,10 +271,10 @@ def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False
         logger.debug(f"Cache expired for user {user_id}, fetching fresh")
 
     # Fetch from API
-    user = fetch_user_from_api(client, user_id)
+    user = fetch_user_from_api(slack, user_id)
 
     if user is not None:
-        save_user_to_cache(org_name, user)
+        save_user_to_cache(slack.org_name, user)
         return user
 
     # If API fetch failed but we have expired cache, use it as fallback
@@ -282,12 +285,11 @@ def get_user(client: WebClient, org_name: str, user_id: str, fresh: bool = False
     return None
 
 
-def get_users(client: WebClient, org_name: str, user_ids: list[str]) -> dict[str, UserInfo]:
+def get_users(slack: SlackCli, user_ids: list[str]) -> dict[str, UserInfo]:
     """Get multiple users, fetching from API if not cached or expired.
 
     Args:
-        client: The Slack WebClient.
-        org_name: The organization name.
+        slack: The SlackCli client.
         user_ids: List of Slack user IDs.
 
     Returns:
@@ -298,28 +300,27 @@ def get_users(client: WebClient, org_name: str, user_ids: list[str]) -> dict[str
     for user_id in user_ids:
         if not user_id:
             continue
-        user = get_user(client, org_name, user_id)
+        user = get_user(slack, user_id)
         if user is not None:
             result[user_id] = user
 
     return result
 
 
-def get_user_display_names(client: WebClient, org_name: str, user_ids: list[str]) -> dict[str, str]:
+def get_user_display_names(slack: SlackCli, user_ids: list[str]) -> dict[str, str]:
     """Get display names for multiple users.
 
     Convenience function that returns a simple dict of user_id -> display_name.
     Prefers the `name` field (Slack username) over display names.
 
     Args:
-        client: The Slack WebClient.
-        org_name: The organization name.
+        slack: The SlackCli client.
         user_ids: List of Slack user IDs.
 
     Returns:
         Dictionary mapping user ID to username (or display name fallback).
     """
-    users = get_users(client, org_name, user_ids)
+    users = get_users(slack, user_ids)
     return {user_id: user.get_username() for user_id, user in users.items()}
 
 

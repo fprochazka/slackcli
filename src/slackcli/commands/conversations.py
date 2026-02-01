@@ -1,18 +1,21 @@
 """Conversations command group for Slack CLI."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..cache import get_cache_age, load_cache, save_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
-from ..users import get_user_display_names
+
+if TYPE_CHECKING:
+    from ..client import SlackCli
 
 app = typer.Typer(
     name="conversations",
@@ -33,7 +36,7 @@ class ConversationLoadResult:
 
     def __init__(
         self,
-        conversations: list["Conversation"],
+        conversations: list[Conversation],
         from_cache: bool,
         cache_age: datetime | None = None,
         refreshed: bool = False,
@@ -64,7 +67,7 @@ class Conversation:
     member_ids: list[str] | None = None  # For group DMs, list of member IDs
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "Conversation":
+    def from_api(cls, data: dict[str, Any]) -> Conversation:
         """Create a Conversation from Slack API response data."""
         # Handle different conversation types
         # For IMs, the name is the user ID
@@ -114,7 +117,7 @@ class Conversation:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Conversation":
+    def from_dict(cls, data: dict[str, Any]) -> Conversation:
         """Create from cached dictionary."""
         return cls(
             id=data.get("id", ""),
@@ -148,18 +151,18 @@ class Conversation:
         return "Unknown"
 
 
-def fetch_mpim_members(client: WebClient, conversation_id: str) -> list[str]:
+def fetch_mpim_members(slack: SlackCli, conversation_id: str) -> list[str]:
     """Fetch member IDs for a group DM (mpim).
 
     Args:
-        client: The Slack WebClient.
+        slack: The SlackCli client.
         conversation_id: The conversation ID.
 
     Returns:
         List of member user IDs.
     """
     try:
-        response = client.conversations_members(channel=conversation_id, limit=100)
+        response = slack.client.conversations_members(channel=conversation_id, limit=100)
         if response["ok"]:
             return response.get("members", [])
     except SlackApiError as e:
@@ -167,12 +170,11 @@ def fetch_mpim_members(client: WebClient, conversation_id: str) -> list[str]:
     return []
 
 
-def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversation]:
+def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
     """Fetch all conversations from Slack API with pagination.
 
     Args:
-        client: The Slack WebClient.
-        org_name: The organization name for caching users.
+        slack: The SlackCli client.
 
     Returns:
         List of all conversations.
@@ -186,7 +188,7 @@ def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversati
     while True:
         try:
             logger.debug(f"Fetching conversations page (cursor: {cursor or 'initial'})")
-            response = client.conversations_list(
+            response = slack.client.conversations_list(
                 types=types,
                 limit=1000,
                 cursor=cursor,
@@ -226,7 +228,7 @@ def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversati
     if mpim_convos:
         console.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
         for convo in mpim_convos:
-            member_ids = fetch_mpim_members(client, convo.id)
+            member_ids = fetch_mpim_members(slack, convo.id)
             convo.member_ids = member_ids
             user_ids_to_fetch.update(member_ids)
 
@@ -234,7 +236,7 @@ def fetch_all_conversations(client: WebClient, org_name: str) -> list[Conversati
     if user_ids_to_fetch:
         console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
         # This will fetch and cache users individually with 24h soft expiry
-        get_user_display_names(client, org_name, list(user_ids_to_fetch))
+        slack.get_user_display_names(list(user_ids_to_fetch))
 
     return conversations
 
@@ -333,8 +335,7 @@ def is_cache_expired(org_name: str, cache_name: str) -> bool:
 
 
 def load_conversations(
-    client: WebClient,
-    org_name: str,
+    slack: SlackCli,
     fresh: bool = False,
 ) -> ConversationLoadResult:
     """Load conversations, using cache unless fresh=True or cache expired.
@@ -345,8 +346,7 @@ def load_conversations(
     - If cache expired or fresh=True, fetch from API and update cache
 
     Args:
-        client: The Slack WebClient.
-        org_name: The organization name.
+        slack: The SlackCli client.
         fresh: If True, force refresh from API regardless of cache state.
 
     Returns:
@@ -355,15 +355,15 @@ def load_conversations(
     needs_refresh = fresh
 
     # Check if cache is expired (older than 6 hours)
-    if not needs_refresh and is_cache_expired(org_name, CACHE_NAME):
+    if not needs_refresh and is_cache_expired(slack.org_name, CACHE_NAME):
         console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
         needs_refresh = True
 
     # Try to load from cache unless refresh is needed
     if not needs_refresh:
-        conversations = load_conversations_from_cache(org_name)
+        conversations = load_conversations_from_cache(slack.org_name)
         if conversations is not None:
-            cache_age = get_cache_age(org_name, CACHE_NAME)
+            cache_age = get_cache_age(slack.org_name, CACHE_NAME)
             if cache_age:
                 console.print(
                     f"[dim]Using cached conversations (updated {cache_age.strftime('%Y-%m-%d %H:%M:%S')})[/dim]"
@@ -378,8 +378,8 @@ def load_conversations(
 
     # Fetch from API
     console.print("[dim]Fetching conversations from Slack API...[/dim]")
-    conversations = fetch_all_conversations(client, org_name)
-    save_conversations_to_cache(org_name, conversations)
+    conversations = fetch_all_conversations(slack)
+    save_conversations_to_cache(slack.org_name, conversations)
     console.print("[green]Cache updated successfully[/green]\n")
 
     return ConversationLoadResult(
@@ -485,14 +485,10 @@ def list_conversations(
 ) -> None:
     """List all Slack conversations (channels, DMs, groups)."""
     ctx = get_context()
-    org = ctx.get_org()
-    org_name = org.name
-
-    # Create Slack client
-    client = WebClient(token=org.token)
+    slack = ctx.get_slack_client()
 
     # Load conversations using the centralized function (handles caching internally)
-    result = load_conversations(client, org_name, fresh=refresh)
+    result = slack.get_conversations(fresh=refresh)
     conversations = result.conversations
 
     # Apply filters
@@ -514,6 +510,6 @@ def list_conversations(
             user_ids_to_fetch.update(convo.member_ids)
 
     # Get user display names (uses per-user file caching with 24h soft expiry)
-    users = get_user_display_names(client, org_name, list(user_ids_to_fetch))
+    users = slack.get_user_display_names(list(user_ids_to_fetch))
 
     display_conversations(filtered_conversations, users)

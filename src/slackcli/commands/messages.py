@@ -1,20 +1,23 @@
 """Messages command for Slack CLI."""
 
+from __future__ import annotations
+
 import json as json_module
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
 from ..context import get_context
 from ..logging import error_console, get_logger
-from ..users import get_channel_names, get_user_display_names
 from .conversations import load_conversations_from_cache
+
+if TYPE_CHECKING:
+    pass
 
 console = Console()
 logger = get_logger(__name__)
@@ -262,128 +265,6 @@ def format_reactions(
             parts.append(f":{emoji}: {', '.join(names)}")
 
     return " ".join(parts)
-
-
-def fetch_channel_messages(
-    client: WebClient,
-    channel_id: str,
-    oldest: datetime | None,
-    latest: datetime | None,
-    limit: int,
-) -> list[dict[str, Any]]:
-    """Fetch messages from a channel.
-
-    Args:
-        client: The Slack WebClient.
-        channel_id: The channel ID.
-        oldest: Oldest message time (inclusive).
-        latest: Latest message time (inclusive).
-        limit: Maximum number of messages to fetch.
-
-    Returns:
-        List of message data from API.
-    """
-    messages: list[dict[str, Any]] = []
-    cursor: str | None = None
-
-    kwargs: dict[str, Any] = {
-        "channel": channel_id,
-        "limit": min(limit, 1000),  # API max is 1000
-    }
-
-    if oldest:
-        kwargs["oldest"] = datetime_to_slack_ts(oldest)
-    if latest:
-        kwargs["latest"] = datetime_to_slack_ts(latest)
-
-    while len(messages) < limit:
-        if cursor:
-            kwargs["cursor"] = cursor
-
-        try:
-            logger.debug(f"Fetching messages (cursor: {cursor or 'initial'})")
-            response = client.conversations_history(**kwargs)
-
-            if not response["ok"]:
-                raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
-
-            batch = response.get("messages", [])
-            messages.extend(batch)
-
-            # Check for more pages
-            if not response.get("has_more", False):
-                break
-
-            response_metadata = response.get("response_metadata", {})
-            cursor = response_metadata.get("next_cursor")
-            if not cursor:
-                break
-
-            # Adjust limit for next request
-            remaining = limit - len(messages)
-            kwargs["limit"] = min(remaining, 1000)
-
-        except SlackApiError as e:
-            error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
-            raise typer.Exit(1) from None
-
-    # Trim to exact limit
-    return messages[:limit]
-
-
-def fetch_thread_replies(
-    client: WebClient,
-    channel_id: str,
-    thread_ts: str,
-    limit: int,
-) -> list[dict[str, Any]]:
-    """Fetch replies in a thread.
-
-    Args:
-        client: The Slack WebClient.
-        channel_id: The channel ID.
-        thread_ts: The thread timestamp.
-        limit: Maximum number of messages to fetch.
-
-    Returns:
-        List of message data from API (parent first, then replies).
-    """
-    messages: list[dict[str, Any]] = []
-    cursor: str | None = None
-
-    while len(messages) < limit:
-        kwargs: dict[str, Any] = {
-            "channel": channel_id,
-            "ts": thread_ts,
-            "limit": min(limit - len(messages), 1000),
-        }
-        if cursor:
-            kwargs["cursor"] = cursor
-
-        try:
-            logger.debug(f"Fetching thread replies (cursor: {cursor or 'initial'})")
-            response = client.conversations_replies(**kwargs)
-
-            if not response["ok"]:
-                raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
-
-            batch = response.get("messages", [])
-            messages.extend(batch)
-
-            # Check for more pages
-            if not response.get("has_more", False):
-                break
-
-            response_metadata = response.get("response_metadata", {})
-            cursor = response_metadata.get("next_cursor")
-            if not cursor:
-                break
-
-        except SlackApiError as e:
-            error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
-            raise typer.Exit(1) from None
-
-    return messages[:limit]
 
 
 def display_channel_messages(
@@ -808,30 +689,30 @@ def messages_command(
 
     # Get org context
     cli_ctx = get_context()
-    org = cli_ctx.get_org()
-    org_name = org.name
+    slack = cli_ctx.get_slack_client()
 
     # Resolve channel
-    channel_id, channel_name = resolve_channel(org_name, channel)
+    channel_id, channel_name = resolve_channel(slack.org_name, channel)
     logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
 
-    # Create Slack client
-    client = WebClient(token=org.token)
-
     # Fetch messages
-    if thread_ts:
-        if not output_json:
-            console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
-        fetched_messages = fetch_thread_replies(client, channel_id, thread_ts, limit)
-    else:
-        time_range = ""
-        if oldest:
-            time_range = f" from {oldest.strftime('%Y-%m-%d %H:%M')}"
-        if latest:
-            time_range += f" to {latest.strftime('%Y-%m-%d %H:%M')}"
-        if not output_json:
-            console.print(f"[dim]Fetching messages{time_range}...[/dim]")
-        fetched_messages = fetch_channel_messages(client, channel_id, oldest, latest, limit)
+    try:
+        if thread_ts:
+            if not output_json:
+                console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
+            fetched_messages = slack.get_thread_replies(channel_id, thread_ts, limit)
+        else:
+            time_range = ""
+            if oldest:
+                time_range = f" from {oldest.strftime('%Y-%m-%d %H:%M')}"
+            if latest:
+                time_range += f" to {latest.strftime('%Y-%m-%d %H:%M')}"
+            if not output_json:
+                console.print(f"[dim]Fetching messages{time_range}...[/dim]")
+            fetched_messages = slack.get_messages(channel_id, oldest, latest, limit)
+    except SlackApiError as e:
+        error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
+        raise typer.Exit(1) from None
 
     if not fetched_messages:
         if output_json:
@@ -858,10 +739,13 @@ def messages_command(
             reply_count = msg.get("reply_count", 0)
             if reply_count > 0:
                 msg_ts = msg.get("ts", "")
-                thread_messages = fetch_thread_replies(client, channel_id, msg_ts, reply_count + 1)
-                # Skip the first message (parent) to avoid duplication
-                if thread_messages:
-                    msg["replies"] = thread_messages[1:]
+                try:
+                    thread_messages = slack.get_thread_replies(channel_id, msg_ts, reply_count + 1)
+                    # Skip the first message (parent) to avoid duplication
+                    if thread_messages:
+                        msg["replies"] = thread_messages[1:]
+                except SlackApiError as e:
+                    logger.debug(f"Failed to fetch thread {msg_ts}: {e}")
 
     # Collect user IDs for resolution
     user_ids: set[str] = set()
@@ -893,10 +777,10 @@ def messages_command(
                     user_ids.update(mentioned_users)
 
     # Resolve user names
-    users = get_user_display_names(client, org_name, list(user_ids))
+    users = slack.get_user_display_names(list(user_ids))
 
     # Get channel names from cache for mention resolution
-    channels = get_channel_names(org_name)
+    channels = slack.get_channel_names()
 
     # Output messages
     if output_json:

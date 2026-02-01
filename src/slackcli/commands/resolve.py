@@ -1,22 +1,25 @@
 """Resolve command for Slack CLI - parse Slack URLs and fetch messages."""
 
+from __future__ import annotations
+
 import json as json_module
 import re
 from dataclasses import dataclass
 from datetime import timezone
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import parse_qs, urlparse
 
 import typer
 from rich.console import Console
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
 from ..context import get_context
 from ..logging import error_console, get_logger
-from ..users import get_channel_names, get_user_display_names
 from .conversations import load_conversations_from_cache
+
+if TYPE_CHECKING:
+    pass
 
 console = Console()
 logger = get_logger(__name__)
@@ -115,79 +118,6 @@ def get_channel_name_from_cache(org_name: str, channel_id: str) -> str | None:
     for convo in conversations:
         if convo.id == channel_id:
             return convo.name or None
-
-    return None
-
-
-def fetch_message(
-    client: WebClient,
-    channel_id: str,
-    message_ts: str,
-) -> dict[str, Any] | None:
-    """Fetch a single message from a channel.
-
-    Args:
-        client: The Slack WebClient.
-        channel_id: The channel ID.
-        message_ts: The message timestamp.
-
-    Returns:
-        Message data or None if not found.
-    """
-    try:
-        response = client.conversations_history(
-            channel=channel_id,
-            latest=message_ts,
-            inclusive=True,
-            limit=1,
-        )
-
-        if response["ok"]:
-            messages = response.get("messages", [])
-            if messages:
-                return messages[0]
-    except SlackApiError as e:
-        logger.debug(f"Failed to fetch message: {e}")
-        raise
-
-    return None
-
-
-def fetch_thread_reply(
-    client: WebClient,
-    channel_id: str,
-    thread_ts: str,
-    message_ts: str,
-) -> dict[str, Any] | None:
-    """Fetch a specific reply from a thread.
-
-    Args:
-        client: The Slack WebClient.
-        channel_id: The channel ID.
-        thread_ts: The parent thread timestamp.
-        message_ts: The specific reply timestamp.
-
-    Returns:
-        Message data or None if not found.
-    """
-    try:
-        response = client.conversations_replies(
-            channel=channel_id,
-            ts=thread_ts,
-            latest=message_ts,
-            inclusive=True,
-            limit=1,
-        )
-
-        if response["ok"]:
-            messages = response.get("messages", [])
-            # Find the exact message by ts
-            for msg in messages:
-                if msg.get("ts") == message_ts:
-                    return msg
-    except SlackApiError as e:
-        logger.debug(f"Failed to fetch thread reply: {e}")
-        raise
 
     return None
 
@@ -323,32 +253,26 @@ def resolve_command(
         ctx.org_name = parsed.workspace
 
     try:
-        org = ctx.get_org()
+        slack = ctx.get_slack_client()
     except ValueError as e:
         error_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None
 
-    org_name = org.name
-
     # Get channel name from cache
-    channel_name = get_channel_name_from_cache(org_name, parsed.channel_id)
+    channel_name = get_channel_name_from_cache(slack.org_name, parsed.channel_id)
     if channel_name is None:
         channel_name = parsed.channel_id
-
-    # Create Slack client
-    client = WebClient(token=org.token)
 
     # Fetch the message
     try:
         if parsed.is_thread_reply and parsed.thread_ts:
-            message = fetch_thread_reply(
-                client,
+            message = slack.get_thread_reply(
                 parsed.channel_id,
                 parsed.thread_ts,
                 parsed.message_ts,
             )
         else:
-            message = fetch_message(client, parsed.channel_id, parsed.message_ts)
+            message = slack.get_message(parsed.channel_id, parsed.message_ts)
     except SlackApiError as e:
         error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
         raise typer.Exit(1) from None
@@ -369,10 +293,10 @@ def resolve_command(
         user_ids.update(mentioned_users)
 
     # Resolve user names
-    users = get_user_display_names(client, org_name, list(user_ids))
+    users = slack.get_user_display_names(list(user_ids))
 
     # Get channel names from cache
-    channels_map = get_channel_names(org_name)
+    channels_map = slack.get_channel_names()
 
     if output_json:
         # JSON output

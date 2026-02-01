@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .client import SlackCli
     from .config import Config, OrgConfig
 
 
@@ -26,6 +27,17 @@ class Context:
     def get_token(self) -> str:
         """Get the token for the selected organization."""
         return self.get_org().token
+
+    def get_slack_client(self) -> "SlackCli":
+        """Create a SlackCli instance from the context.
+
+        Returns:
+            SlackCli instance configured with org name and token.
+        """
+        from .client import SlackCli
+
+        org = self.get_org()
+        return SlackCli(org_name=org.name, token=org.token)
 
 
 # Global context instance
