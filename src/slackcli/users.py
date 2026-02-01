@@ -113,6 +113,16 @@ class UserInfo:
         """
         return self.display_name or self.real_name or self.name or self.id
 
+    def get_username(self) -> str:
+        """Get the username for the user.
+
+        Prefers name (the @username), falls back to display_name, then real_name, then id.
+
+        Returns:
+            The username or best available fallback.
+        """
+        return self.name or self.display_name or self.real_name or self.id
+
     def is_expired(self) -> bool:
         """Check if the cached user info is expired.
 
@@ -298,6 +308,7 @@ def get_user_display_names(client: WebClient, org_name: str, user_ids: list[str]
     """Get display names for multiple users.
 
     Convenience function that returns a simple dict of user_id -> display_name.
+    Prefers the `name` field (Slack username) over display names.
 
     Args:
         client: The Slack WebClient.
@@ -305,7 +316,28 @@ def get_user_display_names(client: WebClient, org_name: str, user_ids: list[str]
         user_ids: List of Slack user IDs.
 
     Returns:
-        Dictionary mapping user ID to display name.
+        Dictionary mapping user ID to username (or display name fallback).
     """
     users = get_users(client, org_name, user_ids)
-    return {user_id: user.get_best_display_name() for user_id, user in users.items()}
+    return {user_id: user.get_username() for user_id, user in users.items()}
+
+
+def get_channel_names(org_name: str) -> dict[str, str]:
+    """Get channel names from the conversations cache.
+
+    Args:
+        org_name: The organization name.
+
+    Returns:
+        Dictionary mapping channel ID to channel name.
+    """
+    from .cache import load_cache
+
+    cache_data = load_cache(org_name, "conversations")
+    if cache_data is None:
+        return {}
+
+    data = cache_data.get("data", {})
+    conversations = data.get("conversations", [])
+
+    return {convo.get("id"): convo.get("name", "") for convo in conversations if convo.get("id")}

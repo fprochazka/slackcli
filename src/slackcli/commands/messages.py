@@ -1,5 +1,6 @@
 """Messages command for Slack CLI."""
 
+import json as json_module
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -12,7 +13,7 @@ from slack_sdk.errors import SlackApiError
 from ..cache import load_cache
 from ..context import get_context
 from ..logging import error_console, get_logger
-from ..users import get_user_display_names
+from ..users import get_channel_names, get_user_display_names
 
 console = Console()
 logger = get_logger(__name__)
@@ -105,26 +106,19 @@ def parse_time_spec(spec: str) -> datetime:
     raise ValueError(f"Cannot parse time specification: {spec}")
 
 
-def resolve_channel(org_name: str, channel_ref: str) -> str:
-    """Resolve a channel reference to a channel ID.
+def resolve_channel(org_name: str, channel_ref: str) -> tuple[str, str]:
+    """Resolve a channel reference to a channel ID and name.
 
     Args:
         org_name: The organization name for cache lookup.
         channel_ref: Channel reference - either '#channel-name' or raw ID.
 
     Returns:
-        The channel ID.
+        Tuple of (channel_id, channel_name).
 
     Raises:
         typer.Exit: If channel cannot be resolved.
     """
-    # If it's already a channel ID (starts with C, D, or G and is alphanumeric)
-    if re.match(r"^[CDG][A-Z0-9]+$", channel_ref):
-        return channel_ref
-
-    # Strip # prefix if present
-    channel_name = channel_ref.lstrip("#")
-
     # Load conversations cache
     cache_data = load_cache(org_name, CONVERSATIONS_CACHE_NAME)
     if cache_data is None:
@@ -134,15 +128,95 @@ def resolve_channel(org_name: str, channel_ref: str) -> str:
     data = cache_data.get("data", {})
     conversations = data.get("conversations", [])
 
+    # If it's already a channel ID (starts with C, D, or G and is alphanumeric)
+    if re.match(r"^[CDG][A-Z0-9]+$", channel_ref):
+        # Look up the name from cache
+        for convo in conversations:
+            if convo.get("id") == channel_ref:
+                return channel_ref, convo.get("name", channel_ref)
+        # ID not found in cache, return ID as name
+        return channel_ref, channel_ref
+
+    # Strip # prefix if present
+    channel_name = channel_ref.lstrip("#")
+
     # Search for matching channel
     for convo in conversations:
         if convo.get("name") == channel_name:
-            return convo.get("id")
+            return convo.get("id"), channel_name
 
     # Not found
     error_console.print(f"[red]Channel '{channel_ref}' not found in cache.[/red]")
     error_console.print("[dim]Run 'slack convos list --refresh' to update the cache.[/dim]")
     raise typer.Exit(1)
+
+
+def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str, str]) -> str:
+    """Replace Slack mention macros with readable names.
+
+    Handles:
+    - <@U08GTCPJW95> - user mentions, replaced with @username
+    - <#C01234567> or <#C01234567|channel-name> - channel mentions, replaced with #channel-name
+    - <https://example.com|link text> - links, replaced with the URL
+    - <!subteam^S123|@team-name> - user group mentions, replaced with @team-name
+
+    Args:
+        text: The original message text with Slack formatting.
+        users: Dictionary mapping user ID to username.
+        channels: Dictionary mapping channel ID to channel name.
+
+    Returns:
+        Text with mentions replaced with readable names.
+    """
+    if not text:
+        return text
+
+    # Replace user mentions: <@U08GTCPJW95> or <@U08GTCPJW95|display_name>
+    def replace_user_mention(match: re.Match) -> str:
+        user_id = match.group(1)
+        username = users.get(user_id, user_id)
+        return f"@{username}"
+
+    text = re.sub(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", replace_user_mention, text)
+
+    # Replace channel mentions: <#C01234567> or <#C01234567|channel-name>
+    def replace_channel_mention(match: re.Match) -> str:
+        channel_id = match.group(1)
+        # If the mention includes a name, use it
+        channel_name_in_mention = match.group(2)
+        if channel_name_in_mention:
+            return f"#{channel_name_in_mention}"
+        # Otherwise look up from cache
+        channel_name = channels.get(channel_id, channel_id)
+        return f"#{channel_name}"
+
+    text = re.sub(r"<#([A-Z0-9]+)(?:\|([^>]*))?>", replace_channel_mention, text)
+
+    # Replace links: <https://example.com|link text> or <https://example.com>
+    def replace_link(match: re.Match) -> str:
+        url = match.group(1)
+        link_text = match.group(2)
+        if link_text:
+            return f"{link_text} ({url})"
+        return url
+
+    text = re.sub(r"<(https?://[^|>]+)(?:\|([^>]*))?>", replace_link, text)
+
+    # Replace user group mentions: <!subteam^S123|@team-name> or <!subteam^S123>
+    def replace_subteam(match: re.Match) -> str:
+        team_name = match.group(2)
+        if team_name:
+            return team_name
+        return f"@subteam-{match.group(1)}"
+
+    text = re.sub(r"<!subteam\^([A-Z0-9]+)(?:\|([^>]*))?>", replace_subteam, text)
+
+    # Replace special mentions: <!here>, <!channel>, <!everyone>
+    text = re.sub(r"<!here>", "@here", text)
+    text = re.sub(r"<!channel>", "@channel", text)
+    text = re.sub(r"<!everyone>", "@everyone", text)
+
+    return text
 
 
 def format_message_text(text: str, indent: str = "  ") -> str:
@@ -319,13 +393,15 @@ def fetch_thread_replies(
 def display_channel_messages(
     messages: list[dict[str, Any]],
     users: dict[str, str],
+    channels: dict[str, str],
     reactions_mode: str,
 ) -> None:
     """Display channel messages.
 
     Args:
         messages: List of messages from API.
-        users: Dictionary mapping user ID to display name.
+        users: Dictionary mapping user ID to username.
+        channels: Dictionary mapping channel ID to channel name.
         reactions_mode: How to display reactions.
     """
     # Messages come in reverse chronological order, reverse for display
@@ -335,6 +411,9 @@ def display_channel_messages(
         text = msg.get("text", "")
         reply_count = msg.get("reply_count", 0)
         reactions = msg.get("reactions", [])
+
+        # Resolve mentions in text
+        text = resolve_slack_mentions(text, users, channels)
 
         # Format timestamp
         try:
@@ -372,13 +451,15 @@ def display_channel_messages(
 def display_thread_messages(
     messages: list[dict[str, Any]],
     users: dict[str, str],
+    channels: dict[str, str],
     reactions_mode: str,
 ) -> None:
     """Display thread messages with parent and replies.
 
     Args:
         messages: List of messages from API (parent first).
-        users: Dictionary mapping user ID to display name.
+        users: Dictionary mapping user ID to username.
+        channels: Dictionary mapping channel ID to channel name.
         reactions_mode: How to display reactions.
     """
     if not messages:
@@ -393,6 +474,9 @@ def display_thread_messages(
     user_id = parent.get("user", "")
     text = parent.get("text", "")
     reactions = parent.get("reactions", [])
+
+    # Resolve mentions in text
+    text = resolve_slack_mentions(text, users, channels)
 
     try:
         dt = slack_ts_to_datetime(ts)
@@ -420,6 +504,9 @@ def display_thread_messages(
         text = reply.get("text", "")
         reactions = reply.get("reactions", [])
 
+        # Resolve mentions in text
+        text = resolve_slack_mentions(text, users, channels)
+
         try:
             dt = slack_ts_to_datetime(ts)
             time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -438,6 +525,74 @@ def display_thread_messages(
             print(f"    {reactions_str}")
 
         print()  # Blank line between replies
+
+
+def output_json_messages(
+    messages: list[dict[str, Any]],
+    users: dict[str, str],
+    channels: dict[str, str],
+    channel_id: str,
+    channel_name: str,
+) -> None:
+    """Output messages as JSON.
+
+    Uses plain print() to avoid Rich console formatting.
+
+    Args:
+        messages: List of messages from API.
+        users: Dictionary mapping user ID to username.
+        channels: Dictionary mapping channel ID to channel name.
+        channel_id: The channel ID.
+        channel_name: The channel name.
+    """
+    output_messages = []
+
+    # Messages come in reverse chronological order, reverse for output
+    for msg in reversed(messages):
+        ts = msg.get("ts", "")
+        user_id = msg.get("user", "")
+        text = msg.get("text", "")
+        thread_ts = msg.get("thread_ts")
+        reply_count = msg.get("reply_count", 0)
+        reactions_data = msg.get("reactions", [])
+
+        # Resolve mentions in text
+        resolved_text = resolve_slack_mentions(text, users, channels)
+
+        # Get username
+        user_name = users.get(user_id, user_id) if user_id else None
+
+        # Format reactions with usernames
+        formatted_reactions = []
+        for reaction in reactions_data:
+            reaction_users = [users.get(uid, uid) for uid in reaction.get("users", [])]
+            formatted_reactions.append(
+                {
+                    "name": reaction.get("name", ""),
+                    "count": reaction.get("count", 0),
+                    "users": reaction_users,
+                }
+            )
+
+        message_obj = {
+            "ts": ts,
+            "user_id": user_id,
+            "user_name": user_name,
+            "text": resolved_text,
+            "thread_ts": thread_ts if thread_ts != ts else None,
+            "reply_count": reply_count,
+            "reactions": formatted_reactions,
+        }
+        output_messages.append(message_obj)
+
+    output = {
+        "channel": channel_id,
+        "channel_name": channel_name,
+        "messages": output_messages,
+    }
+
+    # Use plain print() to avoid Rich formatting
+    print(json_module.dumps(output))
 
 
 def messages_command(
@@ -503,6 +658,13 @@ def messages_command(
             help="How to show reactions: 'off', 'counts', or 'names'.",
         ),
     ] = "off",
+    output_json: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output raw JSON instead of formatted text.",
+        ),
+    ] = False,
 ) -> None:
     """List messages in a channel or thread.
 
@@ -554,7 +716,7 @@ def messages_command(
     org_name = org.name
 
     # Resolve channel
-    channel_id = resolve_channel(org_name, channel)
+    channel_id, channel_name = resolve_channel(org_name, channel)
     logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
 
     # Create Slack client
@@ -562,7 +724,8 @@ def messages_command(
 
     # Fetch messages
     if thread_ts:
-        console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
+        if not output_json:
+            console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
         fetched_messages = fetch_thread_replies(client, channel_id, thread_ts, limit)
     else:
         time_range = ""
@@ -570,14 +733,19 @@ def messages_command(
             time_range = f" from {oldest.strftime('%Y-%m-%d %H:%M')}"
         if latest:
             time_range += f" to {latest.strftime('%Y-%m-%d %H:%M')}"
-        console.print(f"[dim]Fetching messages{time_range}...[/dim]")
+        if not output_json:
+            console.print(f"[dim]Fetching messages{time_range}...[/dim]")
         fetched_messages = fetch_channel_messages(client, channel_id, oldest, latest, limit)
 
     if not fetched_messages:
-        console.print("[yellow]No messages found.[/yellow]")
+        if output_json:
+            print(json_module.dumps({"channel": channel_id, "channel_name": channel_name, "messages": []}))
+        else:
+            console.print("[yellow]No messages found.[/yellow]")
         return
 
-    console.print(f"[dim]Found {len(fetched_messages)} messages[/dim]\n")
+    if not output_json:
+        console.print(f"[dim]Found {len(fetched_messages)} messages[/dim]\n")
 
     # Collect user IDs for resolution
     user_ids: set[str] = set()
@@ -585,15 +753,25 @@ def messages_command(
         if user_id := msg.get("user"):
             user_ids.add(user_id)
         # Also collect user IDs from reactions if showing names
-        if reactions == "names":
+        if reactions == "names" or output_json:
             for reaction in msg.get("reactions", []):
                 user_ids.update(reaction.get("users", []))
+        # Collect user IDs from mentions in message text
+        text = msg.get("text", "")
+        if text:
+            mentioned_users = re.findall(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", text)
+            user_ids.update(mentioned_users)
 
     # Resolve user names
     users = get_user_display_names(client, org_name, list(user_ids))
 
-    # Display messages
-    if thread_ts:
-        display_thread_messages(fetched_messages, users, reactions)
+    # Get channel names from cache for mention resolution
+    channels = get_channel_names(org_name)
+
+    # Output messages
+    if output_json:
+        output_json_messages(fetched_messages, users, channels, channel_id, channel_name)
+    elif thread_ts:
+        display_thread_messages(fetched_messages, users, channels, reactions)
     else:
-        display_channel_messages(fetched_messages, users, reactions)
+        display_channel_messages(fetched_messages, users, channels, reactions)
