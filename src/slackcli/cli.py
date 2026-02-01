@@ -26,9 +26,10 @@ logger = get_logger(__name__)
 _ctx = get_context()
 
 # Register command groups (imported here to avoid circular imports)
-from .commands import convos  # noqa: E402
+from .commands import convos, messages  # noqa: E402
 
 app.add_typer(convos.app, name="convos")
+app.command("messages")(messages.messages_command)
 
 
 def version_callback(value: bool) -> None:
