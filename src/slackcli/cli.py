@@ -1,0 +1,160 @@
+"""CLI entry point for Slack CLI."""
+
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+
+from . import __version__
+from .config import Config, OrgConfig, get_config_path, load_config
+from .logging import error_console, get_logger, setup_logging
+
+app = typer.Typer(
+    name="slack",
+    help="A command-line interface for Slack.",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+)
+
+console = Console()
+logger = get_logger(__name__)
+
+
+@dataclass
+class Context:
+    """CLI context passed to all commands."""
+
+    config: Config | None = None
+    org_name: str | None = None
+    verbose: bool = False
+
+    def get_org(self) -> OrgConfig:
+        """Get the selected organization config."""
+        if self.config is None:
+            self.config = load_config()
+        return self.config.get_org(self.org_name)
+
+    def get_token(self) -> str:
+        """Get the token for the selected organization."""
+        return self.get_org().token
+
+
+# Global context instance
+_ctx = Context()
+
+
+def get_context() -> Context:
+    """Get the current CLI context."""
+    return _ctx
+
+
+def version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        console.print(f"slack {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    org: Annotated[
+        str | None,
+        typer.Option(
+            "--org",
+            "-o",
+            help="Organization name from config to use.",
+            envvar="SLACK_ORG",
+        ),
+    ] = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to config file.",
+            envvar="SLACK_CONFIG",
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Enable debug logging.",
+            is_eager=True,
+        ),
+    ] = False,
+    version: Annotated[
+        bool | None,
+        typer.Option(
+            "--version",
+            "-V",
+            help="Show version and exit.",
+            callback=version_callback,
+            is_eager=True,
+        ),
+    ] = None,
+) -> None:
+    """Slack CLI - A command-line interface for Slack."""
+    setup_logging(verbose=verbose)
+    logger.debug("Debug logging enabled")
+
+    _ctx.verbose = verbose
+    _ctx.org_name = org
+
+    # Load config if path specified or if we need it later
+    if config_path:
+        try:
+            _ctx.config = load_config(config_path)
+        except FileNotFoundError as e:
+            error_console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1) from None
+
+
+@app.command("config")
+def show_config() -> None:
+    """Show the current configuration."""
+    import json
+
+    config_path = get_config_path()
+
+    if not config_path.exists():
+        error_console.print(f"[yellow]Config file not found: {config_path}[/yellow]")
+        raise typer.Exit(1)
+
+    try:
+        config = load_config()
+    except Exception as e:
+        error_console.print(f"[red]Error loading config: {e}[/red]")
+        raise typer.Exit(1) from None
+
+    config_display = {
+        "default_org": config.default_org,
+        "orgs": {
+            name: {
+                "token": org.token[:20] + "..." if len(org.token) > 20 else org.token,
+            }
+            for name, org in config.orgs.items()
+        },
+    }
+
+    console.print(json.dumps(config_display, indent=2))
+    console.print(f"\n[dim]Config file: {config_path}[/dim]")
+
+
+def cli() -> None:
+    """Main entry point for the CLI."""
+    try:
+        app()
+    except Exception as e:
+        error_console.print(f"[red]Error: {e}[/red]")
+        if _ctx.verbose:
+            error_console.print_exception()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli()
