@@ -48,19 +48,19 @@ slack --help                       # Show help
 
 ```bash
 # List all conversations (cached for 6 hours)
-slack convos list
+slack conversations list
 
 # Filter by type
-slack convos list --public          # Public channels only
-slack convos list --private         # Private channels only
-slack convos list --dms             # DMs and group DMs only
+slack conversations list --public          # Public channels only
+slack conversations list --private         # Private channels only
+slack conversations list --dms             # DMs and group DMs only
 
 # Filter by membership
-slack convos list --member          # Channels you're a member of
-slack convos list --non-member      # Channels you're not a member of
+slack conversations list --member          # Channels you're a member of
+slack conversations list --non-member      # Channels you're not a member of
 
 # Force refresh cache
-slack convos list --refresh
+slack conversations list --refresh
 ```
 
 ### List Messages
@@ -168,7 +168,7 @@ uv sync
 uv run slack --help
 
 # Run a command
-uv run slack --org=myworkspace convos list
+uv run slack --org=myworkspace conversations list
 ```
 
 ### Linting and Formatting
@@ -197,7 +197,7 @@ src/slackcli/
 ├── blocks.py           # Block Kit rendering
 ├── logging.py          # Logging setup
 └── commands/
-    ├── convos.py       # Conversation commands
+    ├── conversations.py       # Conversation commands
     ├── messages.py     # Message commands
     └── resolve.py      # URL resolution
 ```

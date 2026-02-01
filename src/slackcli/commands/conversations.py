@@ -15,7 +15,7 @@ from ..logging import error_console, get_logger
 from ..users import get_user_display_names
 
 app = typer.Typer(
-    name="convos",
+    name="conversations",
     help="Manage Slack conversations (channels, DMs, groups).",
     no_args_is_help=True,
     rich_markup_mode=None,

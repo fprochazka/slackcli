@@ -123,7 +123,7 @@ def resolve_channel(org_name: str, channel_ref: str) -> tuple[str, str]:
     # Load conversations cache
     cache_data = load_cache(org_name, CONVERSATIONS_CACHE_NAME)
     if cache_data is None:
-        error_console.print("[red]Conversations cache not found. Run 'slack convos list' first.[/red]")
+        error_console.print("[red]Conversations cache not found. Run 'slack conversations list' first.[/red]")
         raise typer.Exit(1)
 
     data = cache_data.get("data", {})
@@ -148,7 +148,7 @@ def resolve_channel(org_name: str, channel_ref: str) -> tuple[str, str]:
 
     # Not found
     error_console.print(f"[red]Channel '{channel_ref}' not found in cache.[/red]")
-    error_console.print("[dim]Run 'slack convos list --refresh' to update the cache.[/dim]")
+    error_console.print("[dim]Run 'slack conversations list --refresh' to update the cache.[/dim]")
     raise typer.Exit(1)
 
 
