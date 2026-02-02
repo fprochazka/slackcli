@@ -398,3 +398,79 @@ class SlackCli:
             "channel": response.get("channel"),
             "ts": response.get("ts"),
         }
+
+    # -------------------------------------------------------------------------
+    # Reactions
+    # -------------------------------------------------------------------------
+
+    def add_reaction(
+        self,
+        channel_id: str,
+        ts: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        """Add a reaction to a message.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to react to.
+            emoji: The emoji name (without colons).
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Adding reaction '{emoji}' to message {ts} in {channel_id}")
+        response = self.client.reactions_add(
+            channel=channel_id,
+            timestamp=ts,
+            name=emoji,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "ts": ts,
+            "emoji": emoji,
+        }
+
+    def remove_reaction(
+        self,
+        channel_id: str,
+        ts: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        """Remove a reaction from a message.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to remove reaction from.
+            emoji: The emoji name (without colons).
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Removing reaction '{emoji}' from message {ts} in {channel_id}")
+        response = self.client.reactions_remove(
+            channel=channel_id,
+            timestamp=ts,
+            name=emoji,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "ts": ts,
+            "emoji": emoji,
+        }
