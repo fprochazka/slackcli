@@ -72,6 +72,22 @@ slack --verbose <command>          # Enable debug logging
 slack --help                       # Show help
 ```
 
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_ORG` | Default organization name (alternative to `--org`) |
+| `SLACK_CONFIG` | Path to config file (alternative to `--config`) |
+
+```bash
+# Using environment variables
+export SLACK_ORG=myworkspace
+slack conversations list
+
+# Or inline
+SLACK_ORG=myworkspace slack conversations list
+```
+
 ### Conversations
 
 ```bash
