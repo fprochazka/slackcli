@@ -11,3 +11,6 @@ wheels/
 
 # Claude
 .claude/settings.local.json
+
+# Integration tests
+integration-test.sh
