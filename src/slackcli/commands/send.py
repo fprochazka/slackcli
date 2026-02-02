@@ -9,6 +9,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
+from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..output import output_json
 from .messages import resolve_channel
@@ -103,22 +104,9 @@ def send_command(
             console.print(f"[dim]ts={ts}[/dim]")
 
     except SlackApiError as e:
-        error = e.response.get("error", str(e))
-        error_console.print(f"[red]Slack API error: {error}[/red]")
-
-        # Provide helpful hints for common errors
-        if error == "not_in_channel":
-            error_console.print("[dim]Hint: The bot/user must be a member of this channel.[/dim]")
-        elif error == "channel_not_found":
-            error_console.print("[dim]Hint: The channel may not exist or you don't have access to it.[/dim]")
-        elif error == "is_archived":
-            error_console.print("[dim]Hint: This channel is archived and cannot receive messages.[/dim]")
-        elif error == "msg_too_long":
-            error_console.print("[dim]Hint: Message exceeds Slack's 40,000 character limit.[/dim]")
-        elif error == "no_text":
-            error_console.print("[dim]Hint: Message text cannot be empty.[/dim]")
-        elif error == "rate_limited":
-            retry_after = e.response.headers.get("Retry-After", "unknown")
-            error_console.print(f"[dim]Hint: Rate limited. Try again in {retry_after} seconds.[/dim]")
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
 
         raise typer.Exit(1) from None

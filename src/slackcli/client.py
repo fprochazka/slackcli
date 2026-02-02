@@ -8,6 +8,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from .logging import get_logger
+from .retry import create_web_client
 
 if TYPE_CHECKING:
     from .commands.conversations import ConversationLoadResult
@@ -27,9 +28,9 @@ class SlackCli:
 
     @property
     def client(self) -> WebClient:
-        """Lazily create WebClient."""
+        """Lazily create WebClient with retry handlers."""
         if self._client is None:
-            self._client = WebClient(token=self.token)
+            self._client = create_web_client(token=self.token)
         return self._client
 
     # -------------------------------------------------------------------------
