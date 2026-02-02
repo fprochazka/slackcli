@@ -467,7 +467,11 @@ def get_message_text(
     users: dict[str, str],
     channels: dict[str, str],
 ) -> str:
-    """Extract text from a message, falling back to blocks/attachments if needed.
+    """Extract text from a message, preferring blocks over plain text.
+
+    Slack Block Kit messages typically have both a 'text' field (fallback/summary)
+    and a 'blocks' field (rich content). For proper rendering, we should prefer
+    blocks when available, as they contain the actual formatted content.
 
     Args:
         message: The message object from the Slack API.
@@ -477,19 +481,17 @@ def get_message_text(
     Returns:
         Text content of the message.
     """
-    # First try the plain text field
-    text = message.get("text", "").strip()
-
-    # If text exists and is not empty, return it
-    if text:
-        return text
-
-    # Otherwise, try to render blocks
+    # First try to render blocks (preferred source for Block Kit messages)
     blocks = message.get("blocks", [])
     if blocks:
         blocks_text = render_blocks(blocks, users, channels)
         if blocks_text.strip():
             return blocks_text
+
+    # Then try the plain text field
+    text = message.get("text", "").strip()
+    if text:
+        return text
 
     # Finally, try attachments
     attachments = message.get("attachments", [])
