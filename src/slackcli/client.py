@@ -285,3 +285,47 @@ class SlackCli:
                     return msg
 
         return None
+
+    # -------------------------------------------------------------------------
+    # Send Messages
+    # -------------------------------------------------------------------------
+
+    def send_message(
+        self,
+        channel_id: str,
+        text: str,
+        thread_ts: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a message to a channel.
+
+        Args:
+            channel_id: The channel ID.
+            text: The message text.
+            thread_ts: Optional thread timestamp to reply to.
+
+        Returns:
+            The API response data including the message timestamp.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        kwargs: dict[str, Any] = {
+            "channel": channel_id,
+            "text": text,
+        }
+
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+
+        logger.debug(f"Sending message to {channel_id}" + (f" (thread: {thread_ts})" if thread_ts else ""))
+        response = self.client.chat_postMessage(**kwargs)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "ts": response.get("ts"),
+            "message": response.get("message"),
+        }

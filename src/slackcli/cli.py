@@ -24,11 +24,12 @@ logger = get_logger(__name__)
 _ctx = get_context()
 
 # Register command groups (imported here to avoid circular imports)
-from .commands import conversations, messages, resolve  # noqa: E402
+from .commands import conversations, messages, resolve, send  # noqa: E402
 
 app.add_typer(conversations.app, name="conversations")
 app.command("messages")(messages.messages_command)
 app.command("resolve")(resolve.resolve_command)
+app.command("send")(send.send_command)
 
 
 def version_callback(value: bool) -> None:
