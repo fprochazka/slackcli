@@ -33,9 +33,11 @@ This project is **not** affiliated with Slack or Salesforce. If you're looking t
 First clone the repository, then:
 
 ```bash
-# Install globally with uv
-uv tool install .
+# Install globally with uv (editable mode)
+uv tool install -e .
 ```
+
+Editable mode means updates are automatic after `git pull` - no reinstall needed.
 
 ## Configuration
 
