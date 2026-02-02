@@ -1,4 +1,4 @@
-"""Schedule command for Slack CLI."""
+"""Scheduled messages command group for Slack CLI."""
 
 from __future__ import annotations
 
@@ -16,6 +16,13 @@ from ..output import format_message_text, output_json
 from .messages import resolve_channel
 
 logger = get_logger(__name__)
+
+app = typer.Typer(
+    name="scheduled",
+    help="Manage scheduled messages.",
+    no_args_is_help=True,
+    rich_markup_mode=None,
+)
 
 
 def parse_future_time(spec: str) -> datetime:
@@ -96,121 +103,6 @@ def parse_future_time(spec: str) -> datetime:
     raise ValueError(f"Cannot parse time specification: {spec}")
 
 
-# Create sub-app for scheduled messages subcommands
-scheduled_app = typer.Typer(
-    name="scheduled",
-    help="Manage scheduled messages.",
-    no_args_is_help=True,
-)
-
-
-def schedule_command(
-    channel: Annotated[
-        str,
-        typer.Argument(
-            help="Channel reference (#channel-name or channel ID).",
-        ),
-    ],
-    post_at: Annotated[
-        str,
-        typer.Argument(
-            help="When to send: ISO datetime, 'in 1h', 'in 30m', 'tomorrow', 'tomorrow 9am'.",
-        ),
-    ],
-    message: Annotated[
-        str,
-        typer.Argument(
-            help="Message text to schedule.",
-        ),
-    ],
-    thread: Annotated[
-        str | None,
-        typer.Option(
-            "--thread",
-            "-t",
-            help="Thread timestamp to reply to.",
-        ),
-    ] = None,
-    output_json_flag: Annotated[
-        bool,
-        typer.Option(
-            "--json",
-            help="Output the result as JSON.",
-        ),
-    ] = False,
-) -> None:
-    """Schedule a message for future delivery.
-
-    Examples:
-        slack schedule '#general' "2025-02-03 09:00" "Good morning team!"
-        slack schedule '#general' "in 1h" "Reminder!"
-        slack schedule '#general' "in 30m" "Meeting starting soon"
-        slack schedule '#general' "tomorrow" "Daily standup"
-        slack schedule '#general' "tomorrow 9am" "Good morning!"
-        slack schedule '#general' --thread 1234567890.123456 "in 1h" "Thread reply"
-    """
-    # Parse the time specification
-    try:
-        scheduled_time = parse_future_time(post_at)
-    except ValueError as e:
-        error_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1) from None
-
-    # Check if time is in the future
-    now = datetime.now(tz=timezone.utc)
-    if scheduled_time <= now:
-        error_console.print(f"[red]Scheduled time must be in the future. Got: {scheduled_time.isoformat()}[/red]")
-        raise typer.Exit(1)
-
-    # Check 120 day limit
-    max_future = now + timedelta(days=120)
-    if scheduled_time > max_future:
-        error_console.print("[red]Scheduled time cannot be more than 120 days in the future.[/red]")
-        raise typer.Exit(1)
-
-    # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
-
-    # Resolve channel
-    channel_id, channel_name = resolve_channel(slack, channel)
-    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
-
-    # Schedule message
-    try:
-        if not output_json_flag:
-            time_str = scheduled_time.strftime("%Y-%m-%d %H:%M:%S UTC")
-            if thread:
-                console.print(f"[dim]Scheduling reply in thread {thread} in #{channel_name} for {time_str}...[/dim]")
-            else:
-                console.print(f"[dim]Scheduling message in #{channel_name} for {time_str}...[/dim]")
-
-        result = slack.schedule_message(
-            channel_id,
-            message,
-            post_at=int(scheduled_time.timestamp()),
-            thread_ts=thread,
-        )
-
-        if output_json_flag:
-            output_json(result)
-        else:
-            scheduled_message_id = result.get("scheduled_message_id", "unknown")
-            post_at_ts = result.get("post_at", scheduled_time.timestamp())
-            post_at_dt = datetime.fromtimestamp(post_at_ts, tz=timezone.utc)
-            post_at_str = post_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            console.print("[green]Message scheduled successfully.[/green]")
-            console.print(f"[dim]scheduled_message_id={scheduled_message_id}, post_at={post_at_str}[/dim]")
-
-    except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
-
-
 def _format_scheduled_message(
     msg: dict[str, Any],
     users: dict[str, str],
@@ -251,8 +143,8 @@ def _format_scheduled_message(
     }
 
 
-@scheduled_app.command("list")
-def scheduled_list_command(
+@app.command("list")
+def list_scheduled(
     channel: Annotated[
         str | None,
         typer.Argument(
@@ -338,8 +230,116 @@ def scheduled_list_command(
         raise typer.Exit(1) from None
 
 
-@scheduled_app.command("delete")
-def scheduled_delete_command(
+@app.command("create")
+def create_scheduled(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    post_at: Annotated[
+        str,
+        typer.Argument(
+            help="When to send: ISO datetime, 'in 1h', 'in 30m', 'tomorrow', 'tomorrow 9am'.",
+        ),
+    ],
+    message: Annotated[
+        str,
+        typer.Argument(
+            help="Message text to schedule.",
+        ),
+    ],
+    thread: Annotated[
+        str | None,
+        typer.Option(
+            "--thread",
+            "-t",
+            help="Thread timestamp to reply to.",
+        ),
+    ] = None,
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Schedule a message for future delivery.
+
+    Examples:
+        slack scheduled create '#general' "2025-02-03 09:00" "Good morning team!"
+        slack scheduled create '#general' "in 1h" "Reminder!"
+        slack scheduled create '#general' "in 30m" "Meeting starting soon"
+        slack scheduled create '#general' "tomorrow" "Daily standup"
+        slack scheduled create '#general' "tomorrow 9am" "Good morning!"
+        slack scheduled create '#general' --thread 1234567890.123456 "in 1h" "Thread reply"
+    """
+    # Parse the time specification
+    try:
+        scheduled_time = parse_future_time(post_at)
+    except ValueError as e:
+        error_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+
+    # Check if time is in the future
+    now = datetime.now(tz=timezone.utc)
+    if scheduled_time <= now:
+        error_console.print(f"[red]Scheduled time must be in the future. Got: {scheduled_time.isoformat()}[/red]")
+        raise typer.Exit(1)
+
+    # Check 120 day limit
+    max_future = now + timedelta(days=120)
+    if scheduled_time > max_future:
+        error_console.print("[red]Scheduled time cannot be more than 120 days in the future.[/red]")
+        raise typer.Exit(1)
+
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve channel
+    channel_id, channel_name = resolve_channel(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Schedule message
+    try:
+        if not output_json_flag:
+            time_str = scheduled_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+            if thread:
+                console.print(f"[dim]Scheduling reply in thread {thread} in #{channel_name} for {time_str}...[/dim]")
+            else:
+                console.print(f"[dim]Scheduling message in #{channel_name} for {time_str}...[/dim]")
+
+        result = slack.schedule_message(
+            channel_id,
+            message,
+            post_at=int(scheduled_time.timestamp()),
+            thread_ts=thread,
+        )
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            scheduled_message_id = result.get("scheduled_message_id", "unknown")
+            post_at_ts = result.get("post_at", scheduled_time.timestamp())
+            post_at_dt = datetime.fromtimestamp(post_at_ts, tz=timezone.utc)
+            post_at_str = post_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            console.print("[green]Message scheduled successfully.[/green]")
+            console.print(f"[dim]scheduled_message_id={scheduled_message_id}, post_at={post_at_str}[/dim]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None
+
+
+@app.command("delete")
+def delete_scheduled(
     channel: Annotated[
         str,
         typer.Argument(

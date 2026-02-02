@@ -1,4 +1,4 @@
-"""Pin management commands for Slack CLI."""
+"""Pins command group for Slack CLI."""
 
 from __future__ import annotations
 
@@ -19,119 +19,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
-def pin_command(
-    channel: Annotated[
-        str,
-        typer.Argument(
-            help="Channel reference (#channel-name or channel ID).",
-        ),
-    ],
-    timestamp: Annotated[
-        str,
-        typer.Argument(
-            help="Message timestamp (ts) to pin.",
-        ),
-    ],
-    output_json_flag: Annotated[
-        bool,
-        typer.Option(
-            "--json",
-            help="Output the result as JSON.",
-        ),
-    ] = False,
-) -> None:
-    """Pin a message to a channel.
-
-    Examples:
-        slack pin '#general' 1234567890.123456
-        slack pin C0123456789 1234567890.123456
-    """
-    # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
-
-    # Resolve channel
-    channel_id, channel_name = resolve_channel(slack, channel)
-    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
-
-    # Pin message
-    try:
-        if not output_json_flag:
-            console.print(f"[dim]Pinning message {timestamp} in #{channel_name}...[/dim]")
-
-        result = slack.pin_message(channel_id, timestamp)
-
-        if output_json_flag:
-            output_json(result)
-        else:
-            console.print("[green]Message pinned successfully.[/green]")
-            console.print(f"[dim]ts={timestamp}[/dim]")
-
-    except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
-
-
-def unpin_command(
-    channel: Annotated[
-        str,
-        typer.Argument(
-            help="Channel reference (#channel-name or channel ID).",
-        ),
-    ],
-    timestamp: Annotated[
-        str,
-        typer.Argument(
-            help="Message timestamp (ts) to unpin.",
-        ),
-    ],
-    output_json_flag: Annotated[
-        bool,
-        typer.Option(
-            "--json",
-            help="Output the result as JSON.",
-        ),
-    ] = False,
-) -> None:
-    """Unpin a message from a channel.
-
-    Examples:
-        slack unpin '#general' 1234567890.123456
-        slack unpin C0123456789 1234567890.123456
-    """
-    # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
-
-    # Resolve channel
-    channel_id, channel_name = resolve_channel(slack, channel)
-    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
-
-    # Unpin message
-    try:
-        if not output_json_flag:
-            console.print(f"[dim]Unpinning message {timestamp} from #{channel_name}...[/dim]")
-
-        result = slack.unpin_message(channel_id, timestamp)
-
-        if output_json_flag:
-            output_json(result)
-        else:
-            console.print("[green]Message unpinned successfully.[/green]")
-            console.print(f"[dim]ts={timestamp}[/dim]")
-
-    except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+app = typer.Typer(
+    name="pins",
+    help="Manage pinned messages.",
+    no_args_is_help=True,
+    rich_markup_mode=None,
+)
 
 
 def _format_pinned_item(
@@ -182,7 +75,8 @@ def _format_pinned_item(
     }
 
 
-def pins_command(
+@app.command("list")
+def list_pins(
     channel: Annotated[
         str,
         typer.Argument(
@@ -200,9 +94,9 @@ def pins_command(
     """List pinned messages in a channel.
 
     Examples:
-        slack pins '#general'
-        slack pins '#general' --json
-        slack pins C0123456789
+        slack pins list '#general'
+        slack pins list '#general' --json
+        slack pins list C0123456789
     """
     # Get org context
     cli_ctx = get_context()
@@ -284,6 +178,122 @@ def pins_command(
 
                 console.print(f"  [dim]ts={pin['ts']}[/dim]")
                 print()  # Blank line between pins
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None
+
+
+@app.command("add")
+def add_pin(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    timestamp: Annotated[
+        str,
+        typer.Argument(
+            help="Message timestamp (ts) to pin.",
+        ),
+    ],
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Pin a message to a channel.
+
+    Examples:
+        slack pins add '#general' 1234567890.123456
+        slack pins add C0123456789 1234567890.123456
+    """
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve channel
+    channel_id, channel_name = resolve_channel(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Pin message
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Pinning message {timestamp} in #{channel_name}...[/dim]")
+
+        result = slack.pin_message(channel_id, timestamp)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            console.print("[green]Message pinned successfully.[/green]")
+            console.print(f"[dim]ts={timestamp}[/dim]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None
+
+
+@app.command("remove")
+def remove_pin(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    timestamp: Annotated[
+        str,
+        typer.Argument(
+            help="Message timestamp (ts) to unpin.",
+        ),
+    ],
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Unpin a message from a channel.
+
+    Examples:
+        slack pins remove '#general' 1234567890.123456
+        slack pins remove C0123456789 1234567890.123456
+    """
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve channel
+    channel_id, channel_name = resolve_channel(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Unpin message
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Unpinning message {timestamp} from #{channel_name}...[/dim]")
+
+        result = slack.unpin_message(channel_id, timestamp)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            console.print("[green]Message unpinned successfully.[/green]")
+            console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:
         error_msg, hint = format_error_with_hint(e)

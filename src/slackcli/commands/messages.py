@@ -1,9 +1,11 @@
-"""Messages command for Slack CLI."""
+"""Messages command group for Slack CLI."""
 
 from __future__ import annotations
 
 import re
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -11,9 +13,11 @@ from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
 from ..context import get_context
+from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..models import Message, MessagesOutput, resolve_slack_mentions
 from ..output import (
+    output_json,
     output_messages_json,
     output_messages_text,
     output_thread_text,
@@ -23,6 +27,13 @@ if TYPE_CHECKING:
     from ..client import SlackCli
 
 logger = get_logger(__name__)
+
+app = typer.Typer(
+    name="messages",
+    help="Manage Slack messages.",
+    no_args_is_help=True,
+    rich_markup_mode=None,
+)
 
 
 def parse_time_spec(spec: str) -> datetime:
@@ -128,6 +139,55 @@ def resolve_channel(slack: SlackCli, channel_ref: str) -> tuple[str, str]:
     raise typer.Exit(1)
 
 
+def resolve_target(slack: SlackCli, target: str) -> tuple[str, str, bool]:
+    """Resolve a target (channel or user) to a channel ID and name.
+
+    Args:
+        slack: The SlackCli client.
+        target: Target reference - '#channel', 'C...' for channel, '@user' or 'U...' for user DM.
+
+    Returns:
+        Tuple of (channel_id, display_name, is_dm).
+
+    Raises:
+        typer.Exit: If target cannot be resolved.
+    """
+    # Check if this is a user reference (DM)
+    if target.startswith("@") or (target.startswith("U") and re.match(r"^U[A-Z0-9]+$", target)):
+        # It's a user reference - resolve to DM
+        resolved = slack.resolve_user(target)
+        if resolved is None:
+            error_console.print(f"[red]Could not resolve user '{target}'.[/red]")
+            error_console.print("[dim]Hint: Try @username, @email@example.com, or a raw user ID (U...).[/dim]")
+            raise typer.Exit(1)
+
+        user_id, username = resolved
+        logger.debug(f"Resolved user '{target}' to '{user_id}' (@{username})")
+
+        # Open DM conversation
+        try:
+            dm_channel = slack.open_dm(user_id)
+            dm_channel_id = dm_channel.get("channel", {}).get("id")
+
+            if not dm_channel_id:
+                error_console.print("[red]Failed to open DM channel.[/red]")
+                raise typer.Exit(1)
+
+            logger.debug(f"Opened DM channel {dm_channel_id} with user {user_id}")
+            return dm_channel_id, f"@{username}", True
+
+        except SlackApiError as e:
+            error_msg, hint = format_error_with_hint(e)
+            error_console.print(f"[red]Failed to open DM: {error_msg}[/red]")
+            if hint:
+                error_console.print(f"[dim]Hint: {hint}[/dim]")
+            raise typer.Exit(1) from None
+
+    # It's a channel reference
+    channel_id, channel_name = resolve_channel(slack, target)
+    return channel_id, f"#{channel_name}", False
+
+
 def collect_user_ids_from_messages(
     messages: list[dict[str, Any]],
     include_reaction_users: bool = False,
@@ -210,7 +270,8 @@ def convert_messages_to_model(
     )
 
 
-def messages_command(
+@app.command("list")
+def list_messages(
     channel: Annotated[
         str,
         typer.Argument(
@@ -273,7 +334,7 @@ def messages_command(
             help="How to show reactions: 'off', 'counts', or 'names'.",
         ),
     ] = "off",
-    output_json: Annotated[
+    output_json_flag: Annotated[
         bool,
         typer.Option(
             "--json",
@@ -291,11 +352,11 @@ def messages_command(
     """List messages in a channel or thread.
 
     Examples:
-        slack messages '#general'
-        slack messages '#general' --since=7d
-        slack messages '#general' --today
-        slack messages '#general' 1234567890.123456  # thread replies
-        slack messages C0123456789 --reactions=counts
+        slack messages list '#general'
+        slack messages list '#general' --since=7d
+        slack messages list '#general' --today
+        slack messages list '#general' 1234567890.123456  # thread replies
+        slack messages list C0123456789 --reactions=counts
     """
     # Validate reactions option
     if reactions not in ("off", "counts", "names"):
@@ -343,7 +404,7 @@ def messages_command(
     # Fetch messages
     try:
         if thread_ts:
-            if not output_json:
+            if not output_json_flag:
                 console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
             fetched_messages = slack.get_thread_replies(channel_id, thread_ts, limit)
         else:
@@ -352,7 +413,7 @@ def messages_command(
                 time_range = f" from {oldest.strftime('%Y-%m-%d %H:%M')}"
             if latest:
                 time_range += f" to {latest.strftime('%Y-%m-%d %H:%M')}"
-            if not output_json:
+            if not output_json_flag:
                 console.print(f"[dim]Fetching messages{time_range}...[/dim]")
             fetched_messages = slack.get_messages(channel_id, oldest, latest, limit)
     except SlackApiError as e:
@@ -360,7 +421,7 @@ def messages_command(
         raise typer.Exit(1) from None
 
     if not fetched_messages:
-        if output_json:
+        if output_json_flag:
             output = MessagesOutput(
                 channel_id=channel_id,
                 channel_name=channel_name,
@@ -371,14 +432,14 @@ def messages_command(
             console.print("[yellow]No messages found.[/yellow]")
         return
 
-    if not output_json:
+    if not output_json_flag:
         console.print(f"[dim]Found {len(fetched_messages)} messages[/dim]\n")
 
     # Fetch thread replies if --with-threads is enabled and not already viewing a thread
     if with_threads and thread_ts is None:
         # Count messages with threads
         messages_with_threads = [msg for msg in fetched_messages if msg.get("reply_count", 0) > 0]
-        if messages_with_threads and not output_json:
+        if messages_with_threads and not output_json_flag:
             console.print(f"[dim]Fetching {len(messages_with_threads)} threads...[/dim]")
 
         for msg in fetched_messages:
@@ -394,7 +455,7 @@ def messages_command(
                     logger.debug(f"Failed to fetch thread {msg_ts}: {e}")
 
     # Collect user IDs for resolution
-    include_reaction_users = reactions == "names" or output_json
+    include_reaction_users = reactions == "names" or output_json_flag
     user_ids = collect_user_ids_from_messages(
         fetched_messages,
         include_reaction_users=include_reaction_users,
@@ -411,10 +472,320 @@ def messages_command(
     messages_output = convert_messages_to_model(fetched_messages, users, channels, channel_id, channel_name)
 
     # Output messages
-    if output_json:
+    if output_json_flag:
         output_messages_json(messages_output, with_threads)
     elif thread_ts:
         # For thread view, pass the raw Message list to thread display
         output_thread_text(messages_output.messages, reactions)
     else:
         output_messages_text(messages_output, reactions, with_threads)
+
+
+@app.command("send")
+def send_message(
+    target: Annotated[
+        str,
+        typer.Argument(
+            help="Target: #channel, @user, channel ID (C...), or user ID (U...).",
+        ),
+    ],
+    message: Annotated[
+        str | None,
+        typer.Argument(
+            help="Message text to send. Use --stdin to read from stdin instead.",
+        ),
+    ] = None,
+    thread: Annotated[
+        str | None,
+        typer.Option(
+            "--thread",
+            "-t",
+            help="Thread timestamp to reply to.",
+        ),
+    ] = None,
+    stdin: Annotated[
+        bool,
+        typer.Option(
+            "--stdin",
+            help="Read message text from stdin.",
+        ),
+    ] = False,
+    files: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--file",
+            "-f",
+            help="File to upload with the message. Can be specified multiple times.",
+            exists=True,
+            readable=True,
+            resolve_path=True,
+        ),
+    ] = None,
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the posted message details as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Send a message to a channel or user (DM).
+
+    The target can be:
+    - A channel: #channel-name or C0123456789
+    - A user (DM): @username, @email@example.com, or U0123456789
+
+    Examples:
+        slack messages send '#general' "Hello world"
+        slack messages send '@john.doe' "Hello via DM"
+        slack messages send '#general' --thread 1234567890.123456 "Reply in thread"
+        echo "Hello" | slack messages send '#general' --stdin
+        slack messages send '#general' --file ./report.pdf
+        slack messages send '#general' "Here's the report" --file ./report.pdf
+    """
+    # Validate message input
+    has_files = files and len(files) > 0
+
+    if stdin:
+        if message is not None:
+            error_console.print("[red]Cannot specify both message argument and --stdin.[/red]")
+            raise typer.Exit(1)
+        # Read from stdin
+        if sys.stdin.isatty():
+            error_console.print("[red]--stdin specified but no input provided. Pipe content to stdin.[/red]")
+            raise typer.Exit(1)
+        message = sys.stdin.read()
+        if not message.strip():
+            error_console.print("[red]Empty message received from stdin.[/red]")
+            raise typer.Exit(1)
+    elif message is None and not has_files:
+        # Message is required unless we have files
+        error_console.print(
+            "[red]Message text is required. Provide it as an argument, use --stdin, or attach files with --file.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve target (channel or user DM)
+    channel_id, display_name, is_dm = resolve_target(slack, target)
+    logger.debug(f"Resolved target '{target}' to '{channel_id}' ({display_name}, is_dm={is_dm})")
+
+    try:
+        results: dict = {
+            "ok": True,
+            "channel": channel_id,
+            "target": display_name,
+            "is_dm": is_dm,
+        }
+
+        # Send message first if we have one (and we have files)
+        # If no files, just send the message normally
+        # If files but no message, the first file gets the "initial_comment" treatment
+        if message and has_files:
+            # Send message first, then upload files (files will be separate from message)
+            if not output_json_flag:
+                if thread:
+                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
+                else:
+                    console.print(f"[dim]Sending message to {display_name}...[/dim]")
+
+            msg_result = slack.send_message(channel_id, message, thread_ts=thread)
+            results["message"] = msg_result
+
+            if not output_json_flag:
+                ts = msg_result.get("ts", "unknown")
+                console.print("[green]Message sent successfully.[/green]")
+                console.print(f"[dim]ts={ts}[/dim]")
+
+        elif message:
+            # Message only, no files
+            if not output_json_flag:
+                if thread:
+                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
+                else:
+                    console.print(f"[dim]Sending message to {display_name}...[/dim]")
+
+            msg_result = slack.send_message(channel_id, message, thread_ts=thread)
+            results["message"] = msg_result
+
+            if not output_json_flag:
+                ts = msg_result.get("ts", "unknown")
+                console.print("[green]Message sent successfully.[/green]")
+                console.print(f"[dim]ts={ts}[/dim]")
+
+        # Upload files
+        if has_files:
+            results["files"] = []
+            for file_path in files:  # type: ignore[union-attr]
+                if not output_json_flag:
+                    console.print(f"[dim]Uploading {file_path.name}...[/dim]")
+
+                file_result = slack.upload_file(
+                    file_path=str(file_path),
+                    channel_id=channel_id,
+                    thread_ts=thread,
+                )
+                results["files"].append(file_result)
+
+                if not output_json_flag:
+                    file_info = file_result.get("file", {})
+                    file_id = file_info.get("id", "unknown")
+                    console.print(f"[green]File uploaded: {file_path.name}[/green]")
+                    console.print(f"[dim]file_id={file_id}[/dim]")
+
+        if output_json_flag:
+            output_json(results)
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None
+
+
+@app.command("edit")
+def edit_message(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    timestamp: Annotated[
+        str,
+        typer.Argument(
+            help="Message timestamp (ts) to edit.",
+        ),
+    ],
+    message: Annotated[
+        str,
+        typer.Argument(
+            help="New message text.",
+        ),
+    ],
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the updated message details as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Edit an existing message in a Slack channel.
+
+    Examples:
+        slack messages edit '#general' 1234567890.123456 "Updated message"
+        slack messages edit C0123456789 1234567890.123456 "Fixed typo"
+    """
+    # Validate message text
+    if not message.strip():
+        error_console.print("[red]Message text cannot be empty.[/red]")
+        raise typer.Exit(1)
+
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve channel
+    channel_id, channel_name = resolve_channel(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Edit message
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Editing message {timestamp} in #{channel_name}...[/dim]")
+
+        result = slack.edit_message(channel_id, timestamp, message)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            console.print("[green]Message edited successfully.[/green]")
+            console.print(f"[dim]ts={timestamp}[/dim]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None
+
+
+@app.command("delete")
+def delete_message(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    timestamp: Annotated[
+        str,
+        typer.Argument(
+            help="Message timestamp (ts) to delete.",
+        ),
+    ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Skip confirmation prompt.",
+        ),
+    ] = False,
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Delete a message from a Slack channel.
+
+    Examples:
+        slack messages delete '#general' 1234567890.123456
+        slack messages delete C0123456789 1234567890.123456 --force
+    """
+    # Get org context
+    cli_ctx = get_context()
+    slack = cli_ctx.get_slack_client()
+
+    # Resolve channel
+    channel_id, channel_name = resolve_channel(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Confirmation prompt (unless --force is passed or --json is used for scripting)
+    if not force and not output_json_flag:
+        console.print(f"[yellow]About to delete message {timestamp} from #{channel_name}[/yellow]")
+        confirm = typer.confirm("Are you sure you want to delete this message?")
+        if not confirm:
+            console.print("[dim]Deletion cancelled.[/dim]")
+            raise typer.Exit(0)
+
+    # Delete message
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Deleting message {timestamp} from #{channel_name}...[/dim]")
+
+        result = slack.delete_message(channel_id, timestamp)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            console.print("[green]Message deleted successfully.[/green]")
+            console.print(f"[dim]ts={timestamp}[/dim]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+
+        raise typer.Exit(1) from None

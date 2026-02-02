@@ -26,37 +26,25 @@ _ctx = get_context()
 # Register command groups (imported here to avoid circular imports)
 from .commands import (  # noqa: E402
     conversations,
-    delete,
-    dm,
-    download,
-    edit,
+    files,
     messages,
     pins,
-    react,
+    reactions,
     resolve,
-    schedule,
-    send,
+    scheduled,
     unread,
     users,
 )
 
 app.add_typer(conversations.app, name="conversations")
-app.command("messages")(messages.messages_command)
-app.command("resolve")(resolve.resolve_command)
-app.command("send")(send.send_command)
-app.command("download")(download.download_command)
-app.command("dm")(dm.dm_command)
-app.command("edit")(edit.edit_command)
-app.command("delete")(delete.delete_command)
-app.command("react")(react.react_command)
-app.command("unreact")(react.unreact_command)
-app.command("unread")(unread.unread_command)
-app.command("pin")(pins.pin_command)
-app.command("unpin")(pins.unpin_command)
-app.command("pins")(pins.pins_command)
-app.command("schedule")(schedule.schedule_command)
-app.add_typer(schedule.scheduled_app, name="scheduled")
+app.add_typer(messages.app, name="messages")
+app.add_typer(reactions.app, name="reactions")
+app.add_typer(pins.app, name="pins")
+app.add_typer(scheduled.app, name="scheduled")
 app.add_typer(users.app, name="users")
+app.add_typer(files.app, name="files")
+app.command("resolve")(resolve.resolve_command)
+app.command("unread")(unread.unread_command)
 
 
 def version_callback(value: bool) -> None:

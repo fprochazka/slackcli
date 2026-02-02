@@ -72,7 +72,7 @@ slack --verbose <command>          # Enable debug logging
 slack --help                       # Show help
 ```
 
-### List Conversations
+### Conversations
 
 ```bash
 # List all conversations (cached for 6 hours)
@@ -91,171 +91,106 @@ slack conversations list --non-member      # Channels you're not a member of
 slack conversations list --refresh
 ```
 
-### List Messages
+### Messages
 
 ```bash
 # List messages in a channel (default: last 30 days)
-slack messages '#general'
-slack messages C0123456789
+slack messages list '#general'
+slack messages list C0123456789
 
 # Time filters
-slack messages '#general' --today
-slack messages '#general' --last-7d
-slack messages '#general' --last-30d
-slack messages '#general' --since 2024-01-15
-slack messages '#general' --since 7d --until 3d
+slack messages list '#general' --today
+slack messages list '#general' --last-7d
+slack messages list '#general' --last-30d
+slack messages list '#general' --since 2024-01-15
+slack messages list '#general' --since 7d --until 3d
 
 # Include thread replies inline
-slack messages '#general' --with-threads
+slack messages list '#general' --with-threads
 
 # Show reactions
-slack messages '#general' --reactions=counts   # :+1: 3
-slack messages '#general' --reactions=names    # :+1: alice, bob
+slack messages list '#general' --reactions=counts   # :+1: 3
+slack messages list '#general' --reactions=names    # :+1: alice, bob
 
 # View a specific thread
-slack messages '#general' 1234567890.123456
+slack messages list '#general' 1234567890.123456
 
 # JSON output
-slack messages '#general' --json
+slack messages list '#general' --json
+
+# Send a message to a channel
+slack messages send '#general' "Hello world"
+
+# Send a direct message (DM)
+slack messages send '@john.doe' "Hello via DM"
+slack messages send '@john@example.com' "Hello by email"
+slack messages send 'U0123456789' "Hello by user ID"
+
+# Reply in a thread
+slack messages send '#general' --thread 1234567890.123456 "Reply in thread"
+
+# Read message from stdin
+echo "Hello" | slack messages send '#general' --stdin
+
+# Upload a file
+slack messages send '#general' --file ./report.pdf
+
+# Upload a file with a message
+slack messages send '#general' "Here's the report" --file ./report.pdf
+
+# Upload multiple files
+slack messages send '#general' --file ./a.csv --file ./b.csv
+
+# Edit an existing message
+slack messages edit '#general' 1234567890.123456 "Updated message"
+
+# Delete a message (with confirmation prompt)
+slack messages delete '#general' 1234567890.123456
+
+# Skip confirmation
+slack messages delete '#general' 1234567890.123456 --force
 ```
 
 Messages with file attachments will show the file name, size, and download URL.
 
-### Download Files
-
-```bash
-# Download by file ID
-slack download F0ABC123DEF
-
-# Download by URL (from message output)
-slack download 'https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt'
-
-# Specify output path
-slack download F0ABC123DEF --output /path/to/file.txt
-
-# Download to a directory (uses original filename)
-slack download F0ABC123DEF --output ./downloads/
-
-# JSON output
-slack download F0ABC123DEF --json
-```
-
-Files are downloaded to `/tmp/slackcli/` by default.
-
-### Resolve Message URLs
-
-```bash
-# Resolve a Slack message URL to see its content
-slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123456'
-
-# Thread reply URL
-slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123456?thread_ts=1234567890.123456'
-
-# JSON output
-slack resolve 'https://...' --json
-```
-
-The `resolve` command extracts the workspace from the URL, so `--org` is optional.
-
-### Send Messages
-
-```bash
-# Send a message to a channel
-slack send '#general' "Hello world"
-
-# Reply in a thread
-slack send '#general' --thread 1234567890.123456 "Reply in thread"
-
-# Read message from stdin
-echo "Hello" | slack send '#general' --stdin
-
-# Upload a file
-slack send '#general' --file ./report.pdf
-
-# Upload a file with a message
-slack send '#general' "Here's the report" --file ./report.pdf
-
-# Upload multiple files
-slack send '#general' --file ./a.csv --file ./b.csv
-
-# JSON output (returns message timestamp)
-slack send '#general' "Message" --json
-```
-
-### Send Direct Messages
-
-```bash
-# Send a DM by username
-slack dm '@john.doe' "Hello!"
-
-# Send a DM by user ID
-slack dm 'U0123456789' "Hello by ID"
-
-# Send a DM by email
-slack dm '@john@example.com' "Hello by email"
-
-# Read message from stdin
-echo "Hello" | slack dm '@john.doe' --stdin
-```
-
-### Edit Messages
-
-```bash
-# Edit an existing message
-slack edit '#general' 1234567890.123456 "Updated message"
-
-# JSON output
-slack edit '#general' 1234567890.123456 "Updated" --json
-```
-
-### Delete Messages
-
-```bash
-# Delete a message (with confirmation prompt)
-slack delete '#general' 1234567890.123456
-
-# Skip confirmation
-slack delete '#general' 1234567890.123456 --force
-```
-
-### Add/Remove Reactions
+### Reactions
 
 ```bash
 # Add a reaction
-slack react '#general' 1234567890.123456 thumbsup
-slack react '#general' 1234567890.123456 :+1:  # Colons are stripped
+slack reactions add '#general' 1234567890.123456 thumbsup
+slack reactions add '#general' 1234567890.123456 :+1:  # Colons are stripped
 
 # Remove a reaction
-slack unreact '#general' 1234567890.123456 thumbsup
+slack reactions remove '#general' 1234567890.123456 thumbsup
 ```
 
-### Pin Management
+### Pins
 
 ```bash
-# Pin a message
-slack pin '#general' 1234567890.123456
-
-# Unpin a message
-slack unpin '#general' 1234567890.123456
-
 # List pinned messages in a channel
-slack pins '#general'
+slack pins list '#general'
 
 # JSON output
-slack pins '#general' --json
+slack pins list '#general' --json
+
+# Pin a message
+slack pins add '#general' 1234567890.123456
+
+# Unpin a message
+slack pins remove '#general' 1234567890.123456
 ```
 
-### Schedule Messages
+### Scheduled Messages
 
 ```bash
 # Schedule a message for a specific time
-slack schedule '#general' "2025-02-03 09:00" "Good morning!"
+slack scheduled create '#general' "2025-02-03 09:00" "Good morning!"
 
 # Schedule relative to now
-slack schedule '#general' "in 1h" "Reminder"
+slack scheduled create '#general' "in 1h" "Reminder"
 
 # Schedule for tomorrow
-slack schedule '#general' "tomorrow 9am" "Daily standup"
+slack scheduled create '#general' "tomorrow 9am" "Daily standup"
 
 # List scheduled messages
 slack scheduled list
@@ -267,7 +202,28 @@ slack scheduled list '#general'
 slack scheduled delete '#general' <scheduled_message_id>
 ```
 
-### User Management
+### Files
+
+```bash
+# Download by file ID
+slack files download F0ABC123DEF
+
+# Download by URL (from message output)
+slack files download 'https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt'
+
+# Specify output path
+slack files download F0ABC123DEF --output /path/to/file.txt
+
+# Download to a directory (uses original filename)
+slack files download F0ABC123DEF --output ./downloads/
+
+# JSON output
+slack files download F0ABC123DEF --json
+```
+
+Files are downloaded to `/tmp/slackcli/` by default.
+
+### Users
 
 ```bash
 # List all users
@@ -286,11 +242,23 @@ slack users get @john.doe
 slack users get U0123456789
 ```
 
-### Show Configuration
+### Utilities
 
 ```bash
+# Resolve a Slack message URL to see its content
+slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123456'
+
+# Thread reply URL
+slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123456?thread_ts=1234567890.123456'
+
+# JSON output
+slack resolve 'https://...' --json
+
+# Show the current configuration
 slack config
 ```
+
+The `resolve` command extracts the workspace from the URL, so `--org` is optional.
 
 ## Output Formats
 
@@ -390,18 +358,15 @@ src/slackcli/
 ├── errors.py           # Custom exceptions
 ├── retry.py            # Retry utilities for API calls
 └── commands/
-    ├── conversations.py  # Conversation commands
-    ├── messages.py       # Message commands
+    ├── conversations.py  # Conversation list/filter
+    ├── messages.py       # List, send, edit, delete messages
+    ├── reactions.py      # Add/remove reactions
+    ├── pins.py           # List, add, remove pins
+    ├── scheduled.py      # List, create, delete scheduled messages
+    ├── files.py          # Download files
+    ├── users.py          # List, search, get users
     ├── resolve.py        # URL resolution
-    ├── send.py           # Send messages
-    ├── download.py       # Download files
-    ├── edit.py           # Edit messages
-    ├── delete.py         # Delete messages
-    ├── react.py          # Add/remove reactions
-    ├── dm.py             # Direct messages
-    ├── pins.py           # Pin management
-    ├── schedule.py       # Scheduled messages
-    └── users.py          # User management
+    └── unread.py         # Show unread channels
 ```
 
 ## License

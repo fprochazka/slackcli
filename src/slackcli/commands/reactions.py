@@ -1,4 +1,4 @@
-"""React and unreact commands for Slack CLI."""
+"""Reactions command group for Slack CLI."""
 
 from __future__ import annotations
 
@@ -14,6 +14,13 @@ from ..output import output_json
 from .messages import resolve_channel
 
 logger = get_logger(__name__)
+
+app = typer.Typer(
+    name="reactions",
+    help="Manage Slack reactions.",
+    no_args_is_help=True,
+    rich_markup_mode=None,
+)
 
 
 def strip_emoji_colons(emoji: str) -> str:
@@ -35,7 +42,8 @@ def strip_emoji_colons(emoji: str) -> str:
     return emoji
 
 
-def react_command(
+@app.command("add")
+def add_reaction(
     channel: Annotated[
         str,
         typer.Argument(
@@ -65,9 +73,9 @@ def react_command(
     """Add an emoji reaction to a message.
 
     Examples:
-        slack react '#general' 1234567890.123456 thumbsup
-        slack react '#general' 1234567890.123456 :+1:
-        slack react C0123456789 1234567890.123456 heart
+        slack reactions add '#general' 1234567890.123456 thumbsup
+        slack reactions add '#general' 1234567890.123456 :+1:
+        slack reactions add C0123456789 1234567890.123456 heart
     """
     # Strip colons from emoji name
     emoji_name = strip_emoji_colons(emoji)
@@ -106,7 +114,8 @@ def react_command(
         raise typer.Exit(1) from None
 
 
-def unreact_command(
+@app.command("remove")
+def remove_reaction(
     channel: Annotated[
         str,
         typer.Argument(
@@ -136,9 +145,9 @@ def unreact_command(
     """Remove an emoji reaction from a message.
 
     Examples:
-        slack unreact '#general' 1234567890.123456 thumbsup
-        slack unreact '#general' 1234567890.123456 :+1:
-        slack unreact C0123456789 1234567890.123456 heart
+        slack reactions remove '#general' 1234567890.123456 thumbsup
+        slack reactions remove '#general' 1234567890.123456 :+1:
+        slack reactions remove C0123456789 1234567890.123456 heart
     """
     # Strip colons from emoji name
     emoji_name = strip_emoji_colons(emoji)

@@ -1,4 +1,4 @@
-"""Download command for Slack CLI."""
+"""Files command group for Slack CLI."""
 
 from __future__ import annotations
 
@@ -15,6 +15,13 @@ from ..logging import console, error_console, get_logger
 from ..output import output_json
 
 logger = get_logger(__name__)
+
+app = typer.Typer(
+    name="files",
+    help="Manage Slack files.",
+    no_args_is_help=True,
+    rich_markup_mode=None,
+)
 
 # Default download directory
 DEFAULT_DOWNLOAD_DIR = Path("/tmp/slackcli")
@@ -52,14 +59,27 @@ def parse_file_url(url: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def download_command(
+def _format_size(size: int) -> str:
+    """Format file size for display."""
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    elif size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+
+@app.command("download")
+def download_file(
     url_or_id: Annotated[
         str,
         typer.Argument(
             help="File URL or file ID to download.",
         ),
     ],
-    output: Annotated[
+    output_path: Annotated[
         Path | None,
         typer.Option(
             "--output",
@@ -78,13 +98,13 @@ def download_command(
     """Download a file from Slack.
 
     Files can be specified by URL or file ID. The URL can be obtained from
-    the `slack messages` command output or from Slack's web interface.
+    the `slack messages list` command output or from Slack's web interface.
 
     Examples:
-        slack download F0ABC123DEF
-        slack download https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt
-        slack download F0ABC123DEF --output /tmp/myfile.txt
-        slack download F0ABC123DEF --output ./downloads/
+        slack files download F0ABC123DEF
+        slack files download https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt
+        slack files download F0ABC123DEF --output /tmp/myfile.txt
+        slack files download F0ABC123DEF --output ./downloads/
     """
     # Get org context
     cli_ctx = get_context()
@@ -128,15 +148,15 @@ def download_command(
         raise typer.Exit(1) from None
 
     # Determine output path
-    if output is None:
+    if output_path is None:
         # Use default directory with original filename
-        output_path = DEFAULT_DOWNLOAD_DIR / filename
-    elif output.is_dir() or str(output).endswith("/"):
+        final_path = DEFAULT_DOWNLOAD_DIR / filename
+    elif output_path.is_dir() or str(output_path).endswith("/"):
         # Directory specified, use original filename
-        output_path = output / filename
+        final_path = output_path / filename
     else:
         # Full path specified
-        output_path = output
+        final_path = output_path
 
     # Download the file
     try:
@@ -144,7 +164,7 @@ def download_command(
             size_str = _format_size(file_size)
             console.print(f"[dim]Downloading {filename} ({size_str})...[/dim]")
 
-        result = slack.download_file(download_url, str(output_path))
+        result = slack.download_file(download_url, str(final_path))
 
         if output_json_flag:
             output_json(
@@ -166,15 +186,3 @@ def download_command(
         if hint:
             error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
-
-
-def _format_size(size: int) -> str:
-    """Format file size for display."""
-    if size < 1024:
-        return f"{size} B"
-    elif size < 1024 * 1024:
-        return f"{size / 1024:.1f} KB"
-    elif size < 1024 * 1024 * 1024:
-        return f"{size / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size / (1024 * 1024 * 1024):.1f} GB"
