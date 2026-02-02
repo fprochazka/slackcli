@@ -299,7 +299,7 @@ def unread_command(
             ),
         ),
     ] = DEFAULT_CONVERSATION_LIMIT,
-    json_output: Annotated[
+    output_json_flag: Annotated[
         bool,
         typer.Option(
             "--json",
@@ -318,10 +318,10 @@ def unread_command(
     ctx = get_context()
     slack = ctx.get_slack_client()
 
-    unread_channels = fetch_unread_channels(slack, show_progress=not json_output, limit=limit)
+    unread_channels = fetch_unread_channels(slack, show_progress=not output_json_flag, limit=limit)
 
     if not unread_channels:
-        if json_output:
+        if output_json_flag:
             output_json({"channels": []})
         else:
             console.print("[dim]No unread messages.[/dim]")
@@ -338,7 +338,7 @@ def unread_command(
     if user_ids_to_fetch:
         users = slack.get_user_display_names(list(user_ids_to_fetch))
 
-    if json_output:
+    if output_json_flag:
         # Add resolved user names to the output
         channels_data = []
         for channel in unread_channels:

@@ -126,7 +126,7 @@ def resolve_command(
             help="Slack message URL to resolve.",
         ),
     ],
-    output_json: Annotated[
+    output_json_flag: Annotated[
         bool,
         typer.Option(
             "--json",
@@ -215,7 +215,7 @@ def resolve_command(
     )
 
     # Output
-    if output_json:
+    if output_json_flag:
         output_resolved_message_json(resolved)
     else:
         output_resolved_message_text(resolved)
