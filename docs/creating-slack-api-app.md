@@ -2,29 +2,203 @@
 
 This guide walks you through creating a Slack app to get a User OAuth Token (`xoxp-`) for use with slackcli.
 
-## Step 1: Create the App
+## Quick Setup: Using App Manifest
+
+The fastest way to create a Slack app is using an App Manifest. This pre-configures all the necessary OAuth scopes automatically.
+
+### Step 1: Choose Your Manifest
+
+Choose either the **Read-Only** manifest (for viewing messages only) or the **Full Access** manifest (for reading and writing).
+
+<details>
+<summary><strong>Read-Only Manifest</strong> (click to expand)</summary>
+
+```json
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "Slack CLI",
+    "description": "Command-line interface for Slack (read-only)",
+    "long_description": "A CLI tool for reading Slack messages, channels, and conversations. This app provides read-only access to your Slack workspace.",
+    "background_color": "#4A154B"
+  },
+  "features": {},
+  "oauth_config": {
+    "scopes": {
+      "user": [
+        "channels:history",
+        "channels:read",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "mpim:history",
+        "mpim:read",
+        "reactions:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Full Access Manifest</strong> (click to expand)</summary>
+
+```json
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "Slack CLI",
+    "description": "Command-line interface for Slack (full access)",
+    "long_description": "A CLI tool for interacting with Slack. This app provides full read and write access to messages, channels, files, and more in your Slack workspace.",
+    "background_color": "#4A154B"
+  },
+  "features": {},
+  "oauth_config": {
+    "scopes": {
+      "user": [
+        "bookmarks:read",
+        "bookmarks:write",
+        "calls:read",
+        "canvases:read",
+        "canvases:write",
+        "channels:history",
+        "channels:read",
+        "channels:write",
+        "channels:write.invites",
+        "channels:write.topic",
+        "chat:write",
+        "dnd:read",
+        "dnd:write",
+        "files:read",
+        "files:write",
+        "groups:history",
+        "groups:read",
+        "groups:write",
+        "groups:write.invites",
+        "groups:write.topic",
+        "im:history",
+        "im:read",
+        "im:write",
+        "im:write.topic",
+        "links:read",
+        "links:write",
+        "lists:read",
+        "lists:write",
+        "mpim:history",
+        "mpim:read",
+        "mpim:write",
+        "mpim:write.topic",
+        "pins:read",
+        "pins:write",
+        "reactions:read",
+        "reactions:write",
+        "reminders:read",
+        "reminders:write",
+        "stars:read",
+        "stars:write",
+        "team:read",
+        "usergroups:read",
+        "usergroups:write",
+        "users.profile:read",
+        "users:read",
+        "users:read.email"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
+```
+
+</details>
+
+### Step 2: Create the App from Manifest
+
+1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
+2. Click **Create New App**
+3. Select **From an app manifest**
+4. Select your **Workspace** and click **Next**
+5. Choose **JSON** as the format (should be selected by default)
+6. Delete the example manifest and paste your chosen manifest from above
+7. Click **Next** to review the configuration
+8. Click **Create** to create the app
+
+### Step 3: Install and Get Your Token
+
+1. After creation, you will be on the **Basic Information** page
+2. Navigate to **Install App** in the left sidebar
+3. Click **Install to Workspace**
+4. Review the permissions and click **Allow**
+5. Copy the **User OAuth Token** (starts with `xoxp-`)
+
+### Step 4: Configure slackcli
+
+Add the token to your config file at `~/.config/slackcli/config.toml`:
+
+```toml
+default_org = "myworkspace"
+
+[orgs.myworkspace]
+token = "xoxp-your-token-here"
+```
+
+### Step 5: Test the Connection
+
+```bash
+# List your conversations
+slack conversations list
+
+# View messages in a channel
+slack messages '#general' --today
+```
+
+---
+
+## Manual Setup (Alternative)
+
+If you prefer to configure scopes manually, follow these steps instead.
+
+### Step 1: Create the App
 
 1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
 2. Click **Create New App**
 3. Select **From Scratch**
-4. Enter an **App Name** (e.g., "My CLI Assistant")
+4. Enter an **App Name** (e.g., "Slack CLI")
 5. Select your **Workspace**
 6. Click **Create App**
 
-## Step 2: Configure Display Information (Optional)
+### Step 2: Configure Display Information (Optional)
 
-In **Basic Information** → **Display Information**, you can customize:
+In **Basic Information** -> **Display Information**, you can customize:
 
 - **App name**: Display name for the app
 - **Short description**: Brief description shown in the app directory
 - **Long description**: Detailed description of what the app does
 - **App icon**: Upload a custom icon
 
-## Step 3: Configure OAuth Scopes
+### Step 3: Configure OAuth Scopes
 
-Navigate to **OAuth & Permissions** → **Scopes** → **User Token Scopes**.
+Navigate to **OAuth & Permissions** -> **Scopes** -> **User Token Scopes**.
 
-### Minimal Scopes (Read-Only)
+#### Minimal Scopes (Read-Only)
 
 For basic read-only access to messages and channels:
 
@@ -41,7 +215,7 @@ For basic read-only access to messages and channels:
 | `users:read` | View people in workspace |
 | `reactions:read` | View emoji reactions |
 
-### Full Scopes (Read + Write)
+#### Full Scopes (Read + Write)
 
 For complete access including sending messages:
 
@@ -94,14 +268,14 @@ For complete access including sending messages:
 | `users:read` | View people in workspace |
 | `users:read.email` | View email addresses |
 
-## Step 4: Install the App
+### Step 4: Install the App
 
 1. Navigate to **Install App** in the sidebar
 2. Click **Install to Workspace**
 3. Review the permissions and click **Allow**
 4. Copy the **User OAuth Token** (starts with `xoxp-`)
 
-## Step 5: Configure slackcli
+### Step 5: Configure slackcli
 
 Add the token to your config file at `~/.config/slackcli/config.toml`:
 
@@ -112,7 +286,7 @@ default_org = "myworkspace"
 token = "xoxp-your-token-here"
 ```
 
-## Step 6: Test the Connection
+### Step 6: Test the Connection
 
 ```bash
 # List your conversations
@@ -121,6 +295,8 @@ slack conversations list
 # View messages in a channel
 slack messages '#general' --today
 ```
+
+---
 
 ## Token Types
 
