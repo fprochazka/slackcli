@@ -728,3 +728,93 @@ class SlackCli:
             "channel": channel_id,
             "scheduled_message_id": scheduled_message_id,
         }
+
+    # -------------------------------------------------------------------------
+    # File Upload
+    # -------------------------------------------------------------------------
+
+    def upload_file(
+        self,
+        file_path: str,
+        channel_id: str | None = None,
+        thread_ts: str | None = None,
+        initial_comment: str | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload a file to Slack using the files.upload_v2 API.
+
+        This uses the modern external upload flow:
+        1. Get upload URL from files.getUploadURLExternal
+        2. POST file content to the returned URL
+        3. Complete upload with files.completeUploadExternal
+
+        The SDK's files_upload_v2 method handles this flow automatically.
+
+        Args:
+            file_path: Path to the file to upload.
+            channel_id: Optional channel ID to share the file to.
+            thread_ts: Optional thread timestamp to share the file in.
+            initial_comment: Optional message to include with the file.
+            title: Optional title for the file (defaults to filename).
+
+        Returns:
+            The API response data including uploaded file info.
+
+        Raises:
+            SlackApiError: If the API call fails.
+            FileNotFoundError: If the file doesn't exist.
+        """
+        import os
+        from pathlib import Path
+
+        path = Path(file_path)
+
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if not path.is_file():
+            raise ValueError(f"Path is not a file: {file_path}")
+
+        # Prepare upload kwargs
+        kwargs: dict[str, Any] = {
+            "file": str(path),
+            "filename": path.name,
+        }
+
+        if title:
+            kwargs["title"] = title
+        else:
+            kwargs["title"] = path.name
+
+        if channel_id:
+            kwargs["channel"] = channel_id
+
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+
+        if initial_comment:
+            kwargs["initial_comment"] = initial_comment
+
+        file_size = os.path.getsize(path)
+        logger.debug(
+            f"Uploading file {path.name} ({file_size} bytes)"
+            + (f" to {channel_id}" if channel_id else "")
+            + (f" (thread: {thread_ts})" if thread_ts else "")
+        )
+
+        response = self.client.files_upload_v2(**kwargs)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        # Extract file info from response
+        # files_upload_v2 returns file info in 'file' or 'files' key
+        file_info = response.get("file") or {}
+        files = response.get("files", [])
+        if files and not file_info:
+            file_info = files[0] if files else {}
+
+        return {
+            "ok": True,
+            "file": file_info,
+        }
