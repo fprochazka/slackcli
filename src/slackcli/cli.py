@@ -37,6 +37,7 @@ from .commands import (  # noqa: E402
     schedule,
     send,
     unread,
+    users,
 )
 
 app.add_typer(conversations.app, name="conversations")
@@ -55,6 +56,7 @@ app.command("unpin")(pins.unpin_command)
 app.command("pins")(pins.pins_command)
 app.command("schedule")(schedule.schedule_command)
 app.add_typer(schedule.scheduled_app, name="scheduled")
+app.add_typer(users.app, name="users")
 
 
 def version_callback(value: bool) -> None:
