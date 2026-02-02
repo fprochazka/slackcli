@@ -33,10 +33,7 @@ This project is **not** affiliated with Slack or Salesforce. If you're looking t
 First clone the repository, then:
 
 ```bash
-# Install with pipx (recommended)
-pipx install -e -f .
-
-# Or install with uv
+# Install globally with uv
 uv tool install .
 ```
 
