@@ -1,5 +1,6 @@
 """Cache management for Slack CLI."""
 
+import contextlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -75,6 +76,9 @@ def load_cache(org_name: str, cache_name: str) -> dict[str, Any] | None:
         with open(cache_path) as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
+        # Delete corrupted cache file to avoid re-reading it on every call
+        with contextlib.suppress(OSError):
+            cache_path.unlink(missing_ok=True)
         return None
 
 
