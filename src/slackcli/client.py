@@ -615,3 +615,116 @@ class SlackCli:
             "channel": channel_id,
             "items": response.get("items", []),
         }
+
+    # -------------------------------------------------------------------------
+    # Scheduled Messages
+    # -------------------------------------------------------------------------
+
+    def schedule_message(
+        self,
+        channel_id: str,
+        text: str,
+        post_at: int,
+        thread_ts: str | None = None,
+    ) -> dict[str, Any]:
+        """Schedule a message for future delivery.
+
+        Args:
+            channel_id: The channel ID.
+            text: The message text.
+            post_at: Unix timestamp for when to send the message.
+            thread_ts: Optional thread timestamp to reply to.
+
+        Returns:
+            The API response data including the scheduled_message_id.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        kwargs: dict[str, Any] = {
+            "channel": channel_id,
+            "text": text,
+            "post_at": post_at,
+        }
+
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+
+        logger.debug(
+            f"Scheduling message in {channel_id} for {post_at}" + (f" (thread: {thread_ts})" if thread_ts else "")
+        )
+        response = self.client.chat_scheduleMessage(**kwargs)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "scheduled_message_id": response.get("scheduled_message_id"),
+            "post_at": response.get("post_at"),
+            "message": response.get("message"),
+        }
+
+    def list_scheduled_messages(
+        self,
+        channel_id: str | None = None,
+    ) -> dict[str, Any]:
+        """List scheduled messages.
+
+        Args:
+            channel_id: Optional channel ID to filter by.
+
+        Returns:
+            The API response data including scheduled messages.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        kwargs: dict[str, Any] = {}
+
+        if channel_id:
+            kwargs["channel"] = channel_id
+
+        logger.debug("Listing scheduled messages" + (f" for {channel_id}" if channel_id else ""))
+        response = self.client.chat_scheduledMessages_list(**kwargs)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "scheduled_messages": response.get("scheduled_messages", []),
+        }
+
+    def delete_scheduled_message(
+        self,
+        channel_id: str,
+        scheduled_message_id: str,
+    ) -> dict[str, Any]:
+        """Delete a scheduled message.
+
+        Args:
+            channel_id: The channel ID.
+            scheduled_message_id: The scheduled message ID to delete.
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Deleting scheduled message {scheduled_message_id} from {channel_id}")
+        response = self.client.chat_deleteScheduledMessage(
+            channel=channel_id,
+            scheduled_message_id=scheduled_message_id,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "scheduled_message_id": scheduled_message_id,
+        }

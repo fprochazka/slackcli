@@ -35,6 +35,12 @@ ERROR_HINTS: dict[str, str] = {
     "no_pin": "This message is not pinned to the channel.",
     "not_pinnable": "This message type cannot be pinned.",
     "permission_denied": "You don't have permission to pin/unpin messages in this channel.",
+    # Scheduled message errors
+    "time_in_past": "The scheduled time must be in the future.",
+    "time_too_far": "Cannot schedule a message more than 120 days in the future.",
+    "invalid_scheduled_message_id": "The scheduled message ID is invalid or the message has already been posted.",
+    "already_scheduled": "This message has already been scheduled.",
+    "invalid_time": "The scheduled time is not valid.",
     # Rate limiting
     "ratelimited": "Rate limit exceeded. The request will be retried automatically.",
     "rate_limited": "Rate limit exceeded. The request will be retried automatically.",
