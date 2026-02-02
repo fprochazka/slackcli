@@ -211,17 +211,11 @@ slack files download F0ABC123DEF
 # Download by URL (from message output)
 slack files download 'https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt'
 
-# Specify output path
-slack files download F0ABC123DEF --output /path/to/file.txt
-
-# Download to a directory (uses original filename)
-slack files download F0ABC123DEF --output ./downloads/
-
 # JSON output
 slack files download F0ABC123DEF --json
 ```
 
-Files are downloaded to `/tmp/slackcli/` by default.
+Files are downloaded to a unique directory `/tmp/slackcli-<random>/` using the original filename. The full path is printed after download.
 
 ### Search
 

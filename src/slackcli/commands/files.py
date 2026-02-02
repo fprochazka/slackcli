@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 from pathlib import Path
 from typing import Annotated
 
@@ -23,8 +24,11 @@ app = typer.Typer(
     rich_markup_mode=None,
 )
 
-# Default download directory
-DEFAULT_DOWNLOAD_DIR = Path("/tmp/slackcli")
+
+def _generate_download_dir() -> Path:
+    """Generate a unique download directory."""
+    random_suffix = secrets.token_hex(4)
+    return Path(f"/tmp/slackcli-{random_suffix}")
 
 
 def parse_file_url(url: str) -> tuple[str | None, str | None]:
@@ -79,14 +83,6 @@ def download_file(
             help="File URL or file ID to download.",
         ),
     ],
-    output_path: Annotated[
-        Path | None,
-        typer.Option(
-            "--output",
-            "-o",
-            help="Output path. If a directory, uses original filename. Default: /tmp/slackcli/",
-        ),
-    ] = None,
     output_json_flag: Annotated[
         bool,
         typer.Option(
@@ -100,11 +96,11 @@ def download_file(
     Files can be specified by URL or file ID. The URL can be obtained from
     the `slack messages list` command output or from Slack's web interface.
 
+    Files are downloaded to a unique directory: /tmp/slackcli-<random>/
+
     Examples:
         slack files download F0ABC123DEF
         slack files download https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt
-        slack files download F0ABC123DEF --output /tmp/myfile.txt
-        slack files download F0ABC123DEF --output ./downloads/
     """
     # Get org context
     cli_ctx = get_context()
@@ -147,16 +143,9 @@ def download_file(
             error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
 
-    # Determine output path
-    if output_path is None:
-        # Use default directory with original filename
-        final_path = DEFAULT_DOWNLOAD_DIR / filename
-    elif output_path.is_dir() or str(output_path).endswith("/"):
-        # Directory specified, use original filename
-        final_path = output_path / filename
-    else:
-        # Full path specified
-        final_path = output_path
+    # Generate unique download directory
+    download_dir = _generate_download_dir()
+    final_path = download_dir / filename
 
     # Download the file
     try:
@@ -169,16 +158,16 @@ def download_file(
         if output_json_flag:
             output_json(
                 {
-                    "ok": True,
-                    "file_id": file_id,
-                    "filename": filename,
-                    "path": result["path"],
+                    "id": file_id,
+                    "name": filename,
                     "size": result["size"],
+                    "path": result["path"],
                 }
             )
         else:
             size_str = _format_size(result["size"])
-            console.print(f"[green]Downloaded: {result['path']} ({size_str})[/green]")
+            console.print(f"Downloaded: {filename} ({size_str})")
+            console.print(f"Path: {result['path']}")
 
     except SlackApiError as e:
         error_msg, hint = format_error_with_hint(e)
