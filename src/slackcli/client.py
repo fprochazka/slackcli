@@ -520,3 +520,98 @@ class SlackCli:
             "ok": True,
             "channel": response.get("channel"),
         }
+
+    # -------------------------------------------------------------------------
+    # Pins
+    # -------------------------------------------------------------------------
+
+    def pin_message(
+        self,
+        channel_id: str,
+        ts: str,
+    ) -> dict[str, Any]:
+        """Pin a message to a channel.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to pin.
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Pinning message {ts} in {channel_id}")
+        response = self.client.pins_add(
+            channel=channel_id,
+            timestamp=ts,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "ts": ts,
+        }
+
+    def unpin_message(
+        self,
+        channel_id: str,
+        ts: str,
+    ) -> dict[str, Any]:
+        """Unpin a message from a channel.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to unpin.
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Unpinning message {ts} from {channel_id}")
+        response = self.client.pins_remove(
+            channel=channel_id,
+            timestamp=ts,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "ts": ts,
+        }
+
+    def list_pins(
+        self,
+        channel_id: str,
+    ) -> dict[str, Any]:
+        """List pinned messages in a channel.
+
+        Args:
+            channel_id: The channel ID.
+
+        Returns:
+            The API response data including pinned items.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Listing pinned messages in {channel_id}")
+        response = self.client.pins_list(channel=channel_id)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "items": response.get("items", []),
+        }

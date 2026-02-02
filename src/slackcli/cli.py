@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 _ctx = get_context()
 
 # Register command groups (imported here to avoid circular imports)
-from .commands import conversations, delete, dm, edit, messages, react, resolve, send, unread  # noqa: E402
+from .commands import conversations, delete, dm, edit, messages, pins, react, resolve, send, unread  # noqa: E402
 
 app.add_typer(conversations.app, name="conversations")
 app.command("messages")(messages.messages_command)
@@ -36,6 +36,9 @@ app.command("delete")(delete.delete_command)
 app.command("react")(react.react_command)
 app.command("unreact")(react.unreact_command)
 app.command("unread")(unread.unread_command)
+app.command("pin")(pins.pin_command)
+app.command("unpin")(pins.unpin_command)
+app.command("pins")(pins.pins_command)
 
 
 def version_callback(value: bool) -> None:

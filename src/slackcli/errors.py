@@ -30,6 +30,11 @@ ERROR_HINTS: dict[str, str] = {
     "invalid_name": "The emoji name is not valid.",
     "too_many_emoji": "The message has too many reactions.",
     "too_many_reactions": "The message has too many reactions.",
+    # Pin errors
+    "already_pinned": "This message is already pinned to the channel.",
+    "no_pin": "This message is not pinned to the channel.",
+    "not_pinnable": "This message type cannot be pinned.",
+    "permission_denied": "You don't have permission to pin/unpin messages in this channel.",
     # Rate limiting
     "ratelimited": "Rate limit exceeded. The request will be retried automatically.",
     "rate_limited": "Rate limit exceeded. The request will be retried automatically.",
