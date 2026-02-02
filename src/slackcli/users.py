@@ -338,3 +338,128 @@ def get_channel_names(slack: SlackCli) -> dict[str, str]:
         return {}
 
     return {convo.id: convo.name or "" for convo in conversations if convo.id}
+
+
+def load_all_users_from_cache(org_name: str) -> list[UserInfo]:
+    """Load all cached users from the users cache directory.
+
+    Args:
+        org_name: The organization name.
+
+    Returns:
+        List of all cached UserInfo objects.
+    """
+    cache_dir = get_users_cache_dir(org_name)
+    if not cache_dir.exists():
+        return []
+
+    users: list[UserInfo] = []
+    for cache_file in cache_dir.glob("*.json"):
+        try:
+            with open(cache_file) as f:
+                data = json.load(f)
+                users.append(UserInfo.from_cache_dict(data))
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to load user cache file {cache_file}: {e}")
+
+    return users
+
+
+def fetch_all_users_from_api(slack: SlackCli) -> list[UserInfo]:
+    """Fetch all users from the Slack API and cache them.
+
+    This function paginates through all users and saves each one to cache.
+
+    Args:
+        slack: The SlackCli client.
+
+    Returns:
+        List of all UserInfo objects.
+    """
+    users: list[UserInfo] = []
+    cursor: str | None = None
+
+    try:
+        while True:
+            kwargs: dict[str, Any] = {"limit": 200}
+            if cursor:
+                kwargs["cursor"] = cursor
+
+            logger.debug(f"Fetching users (cursor: {cursor or 'initial'})")
+            response = slack.client.users_list(**kwargs)
+
+            if not response["ok"]:
+                logger.debug(f"Failed to fetch users: {response.get('error', 'unknown')}")
+                break
+
+            for user_data in response.get("members", []):
+                user = UserInfo.from_api(user_data)
+                users.append(user)
+                save_user_to_cache(slack.org_name, user)
+
+            # Check for more pages
+            response_metadata = response.get("response_metadata", {})
+            cursor = response_metadata.get("next_cursor")
+            if not cursor:
+                break
+
+    except SlackApiError as e:
+        logger.debug(f"Failed to fetch users list: {e}")
+
+    return users
+
+
+def resolve_user(slack: SlackCli, user_ref: str) -> tuple[str, str] | None:
+    """Resolve a user reference to a user ID and name.
+
+    Supports:
+    - Raw user IDs: U0123456789
+    - Username with @: @john.doe
+    - Email with @: @john@example.com
+
+    The function first checks the cache, then fetches from API if not found.
+
+    Args:
+        slack: The SlackCli client.
+        user_ref: User reference - @username, @email, or raw user ID.
+
+    Returns:
+        Tuple of (user_id, username), or None if not found.
+    """
+    # Check if it's a raw user ID (starts with U and is alphanumeric)
+    if user_ref.startswith("U") and user_ref[1:].replace("-", "").isalnum():
+        user = get_user(slack, user_ref)
+        if user is not None:
+            return user.id, user.get_username()
+        return None
+
+    # Strip @ prefix if present
+    lookup_value = user_ref.lstrip("@")
+
+    # Determine if this looks like an email
+    is_email = "@" in lookup_value
+
+    # First, try to find in cache
+    cached_users = load_all_users_from_cache(slack.org_name)
+    for user in cached_users:
+        if is_email:
+            if user.email and user.email.lower() == lookup_value.lower():
+                return user.id, user.get_username()
+        else:
+            if user.name and user.name.lower() == lookup_value.lower():
+                return user.id, user.get_username()
+
+    # Not found in cache - fetch all users from API and try again
+    logger.debug(f"User '{user_ref}' not found in cache, fetching user list from API")
+    all_users = fetch_all_users_from_api(slack)
+
+    for user in all_users:
+        if is_email:
+            if user.email and user.email.lower() == lookup_value.lower():
+                return user.id, user.get_username()
+        else:
+            if user.name and user.name.lower() == lookup_value.lower():
+                return user.id, user.get_username()
+
+    # Still not found
+    return None

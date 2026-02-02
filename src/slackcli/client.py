@@ -114,6 +114,24 @@ class SlackCli:
 
         return get_channel_names(self)
 
+    def resolve_user(self, user_ref: str) -> tuple[str, str] | None:
+        """Resolve a user reference to a user ID and name.
+
+        Supports:
+        - Raw user IDs: U0123456789
+        - Username with @: @john.doe
+        - Email with @: @john@example.com
+
+        Args:
+            user_ref: User reference - @username, @email, or raw user ID.
+
+        Returns:
+            Tuple of (user_id, username), or None if not found.
+        """
+        from .users import resolve_user
+
+        return resolve_user(self, user_ref)
+
     # -------------------------------------------------------------------------
     # Messages
     # -------------------------------------------------------------------------
