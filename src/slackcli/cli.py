@@ -114,6 +114,7 @@ def main(
 def show_config() -> None:
     """Show the current configuration."""
     import json
+    import os
 
     config_path = get_config_path()
 
@@ -139,6 +140,21 @@ def show_config() -> None:
 
     console.print(json.dumps(config_display, indent=2))
     console.print(f"\n[dim]Config file: {config_path}[/dim]")
+
+    # Show which org would be used
+    env_org = os.environ.get("SLACK_ORG")
+    cli_org = _ctx.org_name
+
+    # Typer merges env var into the option, so if cli_org matches env_org,
+    # it likely came from the environment variable
+    if cli_org and env_org and cli_org == env_org:
+        console.print(f"[dim]Using org from SLACK_ORG: {cli_org}[/dim]")
+    elif cli_org:
+        console.print(f"[dim]Using org from --org: {cli_org}[/dim]")
+    elif config.default_org:
+        console.print(f"[dim]Using default org: {config.default_org}[/dim]")
+    else:
+        console.print("[dim]No org selected (use --org or SLACK_ORG)[/dim]")
 
 
 def cli() -> None:
