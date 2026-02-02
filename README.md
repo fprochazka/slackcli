@@ -34,6 +34,8 @@ token = "xoxp-another-token"
 - `xoxp-*` - User token (recommended, full visibility)
 - `xoxb-*` - Bot token (limited to channels where bot is invited)
 
+See [Creating a Slack API App](docs/creating-slack-api-app.md) for detailed setup instructions.
+
 ## Usage
 
 ### Global Options
