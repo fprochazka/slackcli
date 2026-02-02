@@ -366,3 +366,35 @@ class SlackCli:
             "text": response.get("text"),
             "message": response.get("message"),
         }
+
+    def delete_message(
+        self,
+        channel_id: str,
+        ts: str,
+    ) -> dict[str, Any]:
+        """Delete a message from a channel.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to delete.
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Deleting message {ts} from {channel_id}")
+        response = self.client.chat_delete(
+            channel=channel_id,
+            ts=ts,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "ts": response.get("ts"),
+        }
