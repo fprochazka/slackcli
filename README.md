@@ -17,6 +17,8 @@ This project is **not** affiliated with Slack or Salesforce. If you're looking t
 
 **When to use slackcli:**
 - Reading and searching Slack messages
+- Sending, editing, and deleting messages
+- Adding and removing reactions
 - Automating channel exploration
 - Integrating Slack into AI agents and scripts
 - Quick API interactions from the terminal
@@ -127,6 +129,53 @@ slack resolve 'https://...' --json
 
 The `resolve` command extracts the workspace from the URL, so `--org` is optional.
 
+### Send Messages
+
+```bash
+# Send a message to a channel
+slack send '#general' "Hello world"
+
+# Reply in a thread
+slack send '#general' --thread 1234567890.123456 "Reply in thread"
+
+# Read message from stdin
+echo "Hello" | slack send '#general' --stdin
+
+# JSON output (returns message timestamp)
+slack send '#general' "Message" --json
+```
+
+### Edit Messages
+
+```bash
+# Edit an existing message
+slack edit '#general' 1234567890.123456 "Updated message"
+
+# JSON output
+slack edit '#general' 1234567890.123456 "Updated" --json
+```
+
+### Delete Messages
+
+```bash
+# Delete a message (with confirmation prompt)
+slack delete '#general' 1234567890.123456
+
+# Skip confirmation
+slack delete '#general' 1234567890.123456 --force
+```
+
+### Add/Remove Reactions
+
+```bash
+# Add a reaction
+slack react '#general' 1234567890.123456 thumbsup
+slack react '#general' 1234567890.123456 :+1:  # Colons are stripped
+
+# Remove a reaction
+slack unreact '#general' 1234567890.123456 thumbsup
+```
+
 ### Show Configuration
 
 ```bash
@@ -223,7 +272,11 @@ src/slackcli/
 └── commands/
     ├── conversations.py  # Conversation commands
     ├── messages.py       # Message commands
-    └── resolve.py        # URL resolution
+    ├── resolve.py        # URL resolution
+    ├── send.py           # Send messages
+    ├── edit.py           # Edit messages
+    ├── delete.py         # Delete messages
+    └── react.py          # Add/remove reactions
 ```
 
 ## License
