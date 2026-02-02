@@ -2,6 +2,25 @@
 
 A command-line interface for Slack, designed for both humans and AI agents.
 
+## Not the Official Slack CLI
+
+This project is **not** affiliated with Slack or Salesforce. If you're looking to build Slack apps with workflows, triggers, and datastores, check out the [official Slack CLI](https://api.slack.com/automation/cli).
+
+**What's the difference?**
+
+| Feature | slackcli (this project) | Official Slack CLI |
+|---------|-------------------------|-------------------|
+| **Purpose** | Direct API access for automation & scripting | Build and deploy Slack apps |
+| **Use cases** | Read messages, search channels, AI agent integration | Workflows, triggers, datastores, app development |
+| **Authentication** | Bot/User OAuth tokens | Slack app credentials |
+| **Complexity** | Simple Python CLI | Full development framework |
+
+**When to use slackcli:**
+- Reading and searching Slack messages
+- Automating channel exploration
+- Integrating Slack into AI agents and scripts
+- Quick API interactions from the terminal
+
 ## Installation
 
 First clone the repository, then:
