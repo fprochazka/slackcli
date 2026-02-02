@@ -38,6 +38,7 @@ Choose either the **Read-Only** manifest (for viewing messages only) or the **Fu
         "mpim:history",
         "mpim:read",
         "reactions:read",
+        "search:read",
         "users:read"
       ]
     }
@@ -108,6 +109,11 @@ Choose either the **Read-Only** manifest (for viewing messages only) or the **Fu
         "reactions:read",
         "reactions:write",
         "reminders:read",
+        "search:read",
+        "search:read.files",
+        "search:read.im",
+        "search:read.mpim",
+        "search:read.public",
         "reminders:write",
         "stars:read",
         "stars:write",
@@ -214,6 +220,7 @@ For basic read-only access to messages and channels:
 | `mpim:read` | View basic info about group direct messages |
 | `users:read` | View people in workspace |
 | `reactions:read` | View emoji reactions |
+| `search:read` | Search workspace content |
 
 #### Full Scopes (Read + Write)
 
@@ -258,6 +265,11 @@ For complete access including sending messages:
 | `reactions:read` | View emoji reactions |
 | `reactions:write` | Add and edit emoji reactions |
 | `reminders:read` | View reminders |
+| `search:read` | Search workspace content |
+| `search:read.files` | Search workspace files |
+| `search:read.im` | Search direct messages |
+| `search:read.mpim` | Search group direct messages |
+| `search:read.public` | Search public channels |
 | `reminders:write` | Manage reminders |
 | `stars:read` | View starred messages |
 | `stars:write` | Add or remove stars |
