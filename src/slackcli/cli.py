@@ -32,6 +32,7 @@ from .commands import (  # noqa: E402
     reactions,
     resolve,
     scheduled,
+    search,
     unread,
     users,
 )
@@ -41,6 +42,7 @@ app.add_typer(messages.app, name="messages")
 app.add_typer(reactions.app, name="reactions")
 app.add_typer(pins.app, name="pins")
 app.add_typer(scheduled.app, name="scheduled")
+app.add_typer(search.app, name="search")
 app.add_typer(users.app, name="users")
 app.add_typer(files.app, name="files")
 app.command("resolve")(resolve.resolve_command)

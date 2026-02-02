@@ -223,6 +223,40 @@ slack files download F0ABC123DEF --json
 
 Files are downloaded to `/tmp/slackcli/` by default.
 
+### Search
+
+```bash
+# Search for messages
+slack search messages "quarterly report"
+
+# Filter by channel
+slack search messages "bug fix" --in '#engineering'
+
+# Filter by sender
+slack search messages "deadline" --from '@john.doe'
+
+# Filter by date
+slack search messages "meeting" --after 7d
+slack search messages "project" --before 2024-01-15 --after 2024-01-01
+
+# Sort by timestamp instead of relevance
+slack search messages "update" --sort timestamp --sort-dir desc
+
+# Pagination
+slack search messages "report" --limit 50 --page 2
+
+# Search for files
+slack search files "report.pdf"
+slack search files "spreadsheet" --in '#finance'
+slack search files "presentation" --from '@jane.doe'
+slack search files "budget" --after 30d
+
+# JSON output
+slack search messages "test" --json
+```
+
+**Note:** Search requires the `search:read` OAuth scope. If you get a missing scope error, add this scope in your Slack app settings at https://api.slack.com/apps and reinstall the app.
+
 ### Users
 
 ```bash
@@ -363,6 +397,7 @@ src/slackcli/
     ├── reactions.py      # Add/remove reactions
     ├── pins.py           # List, add, remove pins
     ├── scheduled.py      # List, create, delete scheduled messages
+    ├── search.py         # Search messages and files
     ├── files.py          # Download files
     ├── users.py          # List, search, get users
     ├── resolve.py        # URL resolution

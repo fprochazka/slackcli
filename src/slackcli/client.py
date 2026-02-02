@@ -901,3 +901,89 @@ class SlackCli:
             "ok": True,
             "file": response.get("file", {}),
         }
+
+    # -------------------------------------------------------------------------
+    # Search
+    # -------------------------------------------------------------------------
+
+    def search_messages(
+        self,
+        query: str,
+        sort: str = "score",
+        sort_dir: str = "desc",
+        count: int = 20,
+        page: int = 1,
+    ) -> dict[str, Any]:
+        """Search for messages in Slack.
+
+        Args:
+            query: The search query string (supports Slack search modifiers).
+            sort: Sort by 'score' or 'timestamp'.
+            sort_dir: Sort direction, 'asc' or 'desc'.
+            count: Number of results per page (max 100).
+            page: Page number (1-indexed).
+
+        Returns:
+            The search results from the API.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Searching messages: {query} (sort={sort}, sort_dir={sort_dir}, count={count}, page={page})")
+        response = self.client.search_messages(
+            query=query,
+            sort=sort,
+            sort_dir=sort_dir,
+            count=count,
+            page=page,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "query": response.get("query", query),
+            "messages": response.get("messages", {}),
+        }
+
+    def search_files(
+        self,
+        query: str,
+        sort: str = "score",
+        sort_dir: str = "desc",
+        count: int = 20,
+        page: int = 1,
+    ) -> dict[str, Any]:
+        """Search for files in Slack.
+
+        Args:
+            query: The search query string (supports Slack search modifiers).
+            sort: Sort by 'score' or 'timestamp'.
+            sort_dir: Sort direction, 'asc' or 'desc'.
+            count: Number of results per page (max 100).
+            page: Page number (1-indexed).
+
+        Returns:
+            The search results from the API.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Searching files: {query} (sort={sort}, sort_dir={sort_dir}, count={count}, page={page})")
+        response = self.client.search_files(
+            query=query,
+            sort=sort,
+            sort_dir=sort_dir,
+            count=count,
+            page=page,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "query": response.get("query", query),
+            "files": response.get("files", {}),
+        }

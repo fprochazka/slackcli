@@ -45,7 +45,7 @@ ERROR_HINTS: dict[str, str] = {
     "ratelimited": "Rate limit exceeded. The request will be retried automatically.",
     "rate_limited": "Rate limit exceeded. The request will be retried automatically.",
     # Permission errors
-    "missing_scope": "The token is missing required OAuth scopes. Update your Slack app permissions.",
+    "missing_scope": "The token is missing required OAuth scopes. Check your Slack app at https://api.slack.com/apps.",
     "restricted_action": "This action is restricted by workspace admins.",
     "not_allowed_token_type": "This API method is not allowed for the token type.",
     "ekm_access_denied": "Access denied due to Enterprise Key Management.",
