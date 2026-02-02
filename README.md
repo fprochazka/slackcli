@@ -394,8 +394,7 @@ src/slackcli/
     ├── search.py         # Search messages and files
     ├── files.py          # Download files
     ├── users.py          # List, search, get users
-    ├── resolve.py        # URL resolution
-    └── unread.py         # Show unread channels
+    └── resolve.py        # URL resolution
 ```
 
 ## License

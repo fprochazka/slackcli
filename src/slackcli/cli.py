@@ -33,7 +33,6 @@ from .commands import (  # noqa: E402
     resolve,
     scheduled,
     search,
-    unread,
     users,
 )
 
@@ -46,7 +45,6 @@ app.add_typer(search.app, name="search")
 app.add_typer(users.app, name="users")
 app.add_typer(files.app, name="files")
 app.command("resolve")(resolve.resolve_command)
-app.command("unread")(unread.unread_command)
 
 
 def version_callback(value: bool) -> None:
