@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from pathlib import Path
@@ -29,6 +30,28 @@ def _generate_download_dir() -> Path:
     """Generate a unique download directory."""
     random_suffix = secrets.token_hex(4)
     return Path(f"/tmp/slackcli-{random_suffix}")
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal.
+
+    Removes directory components and dangerous characters to ensure the
+    filename cannot escape the intended download directory.
+
+    Args:
+        filename: The filename from Slack.
+
+    Returns:
+        A safe filename string.
+    """
+    # Get just the basename (removes any directory components like "/" or "\")
+    filename = os.path.basename(filename)
+    # Remove any ".." sequences that could be used for traversal
+    filename = filename.replace("..", "_")
+    # If empty or just dots, use a default name
+    if not filename or filename.strip(".") == "":
+        filename = "downloaded_file"
+    return filename
 
 
 def parse_file_url(url: str) -> tuple[str | None, str | None]:
@@ -133,7 +156,8 @@ def download_file(
             error_console.print(f"[red]File {file_id} has no download URL.[/red]")
             raise typer.Exit(1)
 
-        filename = file_info.get("name", file_id)
+        raw_filename = file_info.get("name", file_id)
+        filename = _sanitize_filename(raw_filename)
         file_size = file_info.get("size", 0)
 
     except SlackApiError as e:
