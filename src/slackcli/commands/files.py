@@ -14,6 +14,7 @@ from slack_sdk.errors import SlackApiError
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
+from ..models import format_file_size
 from ..output import output_json
 
 logger = get_logger(__name__)
@@ -84,18 +85,6 @@ def parse_file_url(url: str) -> tuple[str | None, str | None]:
         return workspace_match.group(2), workspace_match.group(1)
 
     return None, None
-
-
-def _format_size(size: int) -> str:
-    """Format file size for display."""
-    if size < 1024:
-        return f"{size} B"
-    elif size < 1024 * 1024:
-        return f"{size / 1024:.1f} KB"
-    elif size < 1024 * 1024 * 1024:
-        return f"{size / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
 @app.command("download")
@@ -174,7 +163,7 @@ def download_file(
     # Download the file
     try:
         if not output_json_flag:
-            size_str = _format_size(file_size)
+            size_str = format_file_size(file_size)
             console.print(f"[dim]Downloading {filename} ({size_str})...[/dim]")
 
         result = slack.download_file(download_url, str(final_path))
@@ -189,7 +178,7 @@ def download_file(
                 }
             )
         else:
-            size_str = _format_size(result["size"])
+            size_str = format_file_size(result["size"])
             console.print(f"Downloaded: {filename} ({size_str})")
             console.print(f"Path: {result['path']}")
 

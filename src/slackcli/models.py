@@ -17,6 +17,25 @@ from typing import Any
 MessageTextFunc = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str]
 
 
+def format_file_size(size: int) -> str:
+    """Format a file size in bytes for human display.
+
+    Args:
+        size: The file size in bytes.
+
+    Returns:
+        Human-readable size string (e.g., "1.5 MB").
+    """
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    elif size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+
 @dataclass
 class FileAttachment:
     """Represents a file attached to a Slack message."""
@@ -69,14 +88,7 @@ class FileAttachment:
 
     def format_size(self) -> str:
         """Format the file size for human display."""
-        if self.size < 1024:
-            return f"{self.size} B"
-        elif self.size < 1024 * 1024:
-            return f"{self.size / 1024:.1f} KB"
-        elif self.size < 1024 * 1024 * 1024:
-            return f"{self.size / (1024 * 1024):.1f} MB"
-        else:
-            return f"{self.size / (1024 * 1024 * 1024):.1f} GB"
+        return format_file_size(self.size)
 
 
 @dataclass

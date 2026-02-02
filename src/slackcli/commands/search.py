@@ -12,6 +12,7 @@ from slack_sdk.errors import SlackApiError
 from ..context import get_context
 from ..errors import format_error_with_hint, get_error_code
 from ..logging import console, error_console, get_logger
+from ..models import format_file_size
 from ..output import output_json
 
 if TYPE_CHECKING:
@@ -259,12 +260,7 @@ def output_search_files_text(
         permalink = match.get("permalink", "")
 
         # Format size
-        if size < 1024:
-            size_str = f"{size} B"
-        elif size < 1024 * 1024:
-            size_str = f"{size / 1024:.1f} KB"
-        else:
-            size_str = f"{size / (1024 * 1024):.1f} MB"
+        size_str = format_file_size(size)
 
         # Format date
         try:
