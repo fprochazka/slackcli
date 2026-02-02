@@ -24,12 +24,13 @@ logger = get_logger(__name__)
 _ctx = get_context()
 
 # Register command groups (imported here to avoid circular imports)
-from .commands import conversations, delete, edit, messages, react, resolve, send, unread  # noqa: E402
+from .commands import conversations, delete, dm, edit, messages, react, resolve, send, unread  # noqa: E402
 
 app.add_typer(conversations.app, name="conversations")
 app.command("messages")(messages.messages_command)
 app.command("resolve")(resolve.resolve_command)
 app.command("send")(send.send_command)
+app.command("dm")(dm.dm_command)
 app.command("edit")(edit.edit_command)
 app.command("delete")(delete.delete_command)
 app.command("react")(react.react_command)

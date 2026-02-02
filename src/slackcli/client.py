@@ -493,3 +493,30 @@ class SlackCli:
             "ts": ts,
             "emoji": emoji,
         }
+
+    # -------------------------------------------------------------------------
+    # Direct Messages
+    # -------------------------------------------------------------------------
+
+    def open_dm(self, user_id: str) -> dict[str, Any]:
+        """Open a direct message conversation with a user.
+
+        Args:
+            user_id: The Slack user ID.
+
+        Returns:
+            The API response data including the DM channel info.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Opening DM conversation with user {user_id}")
+        response = self.client.conversations_open(users=[user_id])
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+        }
