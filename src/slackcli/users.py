@@ -324,18 +324,16 @@ def get_user_display_names(slack: SlackCli, user_ids: list[str]) -> dict[str, st
     return {user_id: user.get_username() for user_id, user in users.items()}
 
 
-def get_channel_names(org_name: str) -> dict[str, str]:
+def get_channel_names(slack: SlackCli) -> dict[str, str]:
     """Get channel names from the conversations cache.
 
     Args:
-        org_name: The organization name.
+        slack: The SlackCli client.
 
     Returns:
         Dictionary mapping channel ID to channel name.
     """
-    from .commands.conversations import load_conversations_from_cache
-
-    conversations = load_conversations_from_cache(org_name)
+    conversations = slack.get_conversations_from_cache()
     if conversations is None:
         return {}
 

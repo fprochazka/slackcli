@@ -2,26 +2,23 @@
 
 from __future__ import annotations
 
-import json as json_module
 import re
 from dataclasses import dataclass
-from datetime import timezone
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated
 from urllib.parse import parse_qs, urlparse
 
 import typer
-from rich.console import Console
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
 from ..context import get_context
 from ..logging import error_console, get_logger
-from .conversations import load_conversations_from_cache
+from ..models import Message, ResolvedMessage, resolve_slack_mentions
+from ..output import output_resolved_message_json, output_resolved_message_text
 
 if TYPE_CHECKING:
-    pass
+    from ..client import SlackCli
 
-console = Console()
 logger = get_logger(__name__)
 
 
@@ -59,7 +56,7 @@ def parse_slack_url(url: str) -> ParsedSlackUrl:
         raise ValueError(f"Invalid Slack URL: hostname must end with slack.com, got '{parsed.hostname}'")
 
     # Extract workspace subdomain from hostname
-    # e.g., "rohlikskillz.slack.com" -> "rohlikskillz"
+    # e.g., "myworkspace.slack.com" -> "myworkspace"
     hostname_parts = parsed.hostname.split(".")
     if len(hostname_parts) < 3:
         raise ValueError(f"Invalid Slack URL hostname format: {parsed.hostname}")
@@ -101,17 +98,17 @@ def parse_slack_url(url: str) -> ParsedSlackUrl:
     )
 
 
-def get_channel_name_from_cache(org_name: str, channel_id: str) -> str | None:
+def get_channel_name_from_cache(slack: SlackCli, channel_id: str) -> str | None:
     """Get channel name from cache.
 
     Args:
-        org_name: The organization name.
+        slack: The SlackCli client.
         channel_id: The channel ID.
 
     Returns:
         Channel name or None if not found.
     """
-    conversations = load_conversations_from_cache(org_name)
+    conversations = slack.get_conversations_from_cache()
     if conversations is None:
         return None
 
@@ -120,100 +117,6 @@ def get_channel_name_from_cache(org_name: str, channel_id: str) -> str | None:
             return convo.name or None
 
     return None
-
-
-def slack_ts_to_datetime_str(ts: str) -> str:
-    """Convert Slack timestamp to datetime string.
-
-    Args:
-        ts: Slack timestamp.
-
-    Returns:
-        Formatted datetime string.
-    """
-    from datetime import datetime
-
-    try:
-        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except (ValueError, OSError):
-        return ts
-
-
-def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str, str]) -> str:
-    """Replace Slack mention macros with readable names.
-
-    Args:
-        text: The original message text.
-        users: Dictionary mapping user ID to username.
-        channels: Dictionary mapping channel ID to channel name.
-
-    Returns:
-        Text with mentions replaced.
-    """
-    if not text:
-        return text
-
-    # Replace user mentions: <@U08GTCPJW95> or <@U08GTCPJW95|display_name>
-    def replace_user_mention(match: re.Match) -> str:
-        user_id = match.group(1)
-        username = users.get(user_id, user_id)
-        return f"@{username}"
-
-    text = re.sub(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", replace_user_mention, text)
-
-    # Replace channel mentions: <#C01234567> or <#C01234567|channel-name>
-    def replace_channel_mention(match: re.Match) -> str:
-        channel_id = match.group(1)
-        channel_name_in_mention = match.group(2)
-        if channel_name_in_mention:
-            return f"#{channel_name_in_mention}"
-        channel_name = channels.get(channel_id, channel_id)
-        return f"#{channel_name}"
-
-    text = re.sub(r"<#([A-Z0-9]+)(?:\|([^>]*))?>", replace_channel_mention, text)
-
-    # Replace links: <https://example.com|link text> or <https://example.com>
-    def replace_link(match: re.Match) -> str:
-        url = match.group(1)
-        link_text = match.group(2)
-        if link_text:
-            return f"{link_text} ({url})"
-        return url
-
-    text = re.sub(r"<(https?://[^|>]+)(?:\|([^>]*))?>", replace_link, text)
-
-    # Replace special mentions
-    text = re.sub(r"<!here>", "@here", text)
-    text = re.sub(r"<!channel>", "@channel", text)
-    text = re.sub(r"<!everyone>", "@everyone", text)
-
-    return text
-
-
-def format_message_output(
-    message: dict[str, Any],
-    users: dict[str, str],
-    channels_map: dict[str, str],
-) -> str:
-    """Format message text with indentation.
-
-    Args:
-        message: Message data from API.
-        users: Dictionary mapping user ID to username.
-        channels_map: Dictionary mapping channel ID to channel name.
-
-    Returns:
-        Formatted message text.
-    """
-    text = get_message_text(message, users, channels_map)
-    text = resolve_slack_mentions(text, users, channels_map)
-
-    if not text:
-        return "  (no text)"
-
-    lines = text.split("\n")
-    return "\n".join(f"  {line}" for line in lines)
 
 
 def resolve_command(
@@ -259,35 +162,35 @@ def resolve_command(
         raise typer.Exit(1) from None
 
     # Get channel name from cache
-    channel_name = get_channel_name_from_cache(slack.org_name, parsed.channel_id)
+    channel_name = get_channel_name_from_cache(slack, parsed.channel_id)
     if channel_name is None:
         channel_name = parsed.channel_id
 
     # Fetch the message
     try:
         if parsed.is_thread_reply and parsed.thread_ts:
-            message = slack.get_thread_reply(
+            message_data = slack.get_thread_reply(
                 parsed.channel_id,
                 parsed.thread_ts,
                 parsed.message_ts,
             )
         else:
-            message = slack.get_message(parsed.channel_id, parsed.message_ts)
+            message_data = slack.get_message(parsed.channel_id, parsed.message_ts)
     except SlackApiError as e:
         error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
         raise typer.Exit(1) from None
 
-    if message is None:
+    if message_data is None:
         error_console.print("[red]Message not found.[/red]")
         raise typer.Exit(1)
 
     # Collect user IDs for resolution
     user_ids: set[str] = set()
-    if user_id := message.get("user"):
+    if user_id := message_data.get("user"):
         user_ids.add(user_id)
 
     # Extract mentioned user IDs from text
-    text = message.get("text", "")
+    text = message_data.get("text", "")
     if text:
         mentioned_users = re.findall(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", text)
         user_ids.update(mentioned_users)
@@ -298,52 +201,21 @@ def resolve_command(
     # Get channel names from cache
     channels_map = slack.get_channel_names()
 
+    # Convert to Message model
+    message = Message.from_api(message_data, users, channels_map, get_message_text, resolve_slack_mentions)
+
+    # Create resolved message output
+    resolved = ResolvedMessage(
+        channel_id=parsed.channel_id,
+        channel_name=channel_name,
+        message_ts=parsed.message_ts,
+        thread_ts=parsed.thread_ts,
+        is_thread_reply=parsed.is_thread_reply,
+        message=message,
+    )
+
+    # Output
     if output_json:
-        # JSON output
-        user_id = message.get("user", "")
-        user_name = users.get(user_id, user_id) if user_id else None
-
-        text = get_message_text(message, users, channels_map)
-        resolved_text = resolve_slack_mentions(text, users, channels_map)
-
-        output = {
-            "channel_id": parsed.channel_id,
-            "channel_name": channel_name,
-            "message_ts": parsed.message_ts,
-            "thread_ts": parsed.thread_ts,
-            "is_thread_reply": parsed.is_thread_reply,
-            "message": {
-                "ts": message.get("ts"),
-                "user_id": user_id,
-                "user_name": user_name,
-                "text": resolved_text,
-                "reactions": message.get("reactions", []),
-            },
-        }
-
-        print(json_module.dumps(output, indent=2, ensure_ascii=False))
+        output_resolved_message_json(resolved)
     else:
-        # Human-readable output
-        print(f"Channel: #{channel_name} ({parsed.channel_id})")
-
-        if parsed.is_thread_reply and parsed.thread_ts:
-            print(f"Thread: {parsed.thread_ts}")
-            print(f"  To view full thread: slack messages '#{channel_name}' {parsed.thread_ts}")
-            print(f"Message: {parsed.message_ts} (reply in thread)")
-        else:
-            print(f"Message: {parsed.message_ts}")
-
-        print()
-
-        # Format timestamp
-        ts = message.get("ts", "")
-        time_str = slack_ts_to_datetime_str(ts)
-
-        # Get user name
-        user_id = message.get("user", "")
-        user_name = users.get(user_id, user_id) if user_id else "(unknown)"
-        if user_name and not user_name.startswith("@"):
-            user_name = f"@{user_name}"
-
-        print(f"{time_str}  {user_name}")
-        print(format_message_output(message, users, channels_map))
+        output_resolved_message_text(resolved)

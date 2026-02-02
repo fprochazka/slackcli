@@ -190,16 +190,19 @@ uv run ruff check --fix .
 src/slackcli/
 ├── __init__.py         # Package version
 ├── cli.py              # Main CLI entry point
+├── client.py           # SlackCli class (API access)
 ├── config.py           # Configuration loading
 ├── context.py          # CLI context (org, token)
 ├── cache.py            # Cache utilities
-├── users.py            # User info caching
+├── models.py           # Data classes
+├── output.py           # Output formatting
+├── users.py            # User info resolution
 ├── blocks.py           # Block Kit rendering
 ├── logging.py          # Logging setup
 └── commands/
-    ├── conversations.py       # Conversation commands
-    ├── messages.py     # Message commands
-    └── resolve.py      # URL resolution
+    ├── conversations.py  # Conversation commands
+    ├── messages.py       # Message commands
+    └── resolve.py        # URL resolution
 ```
 
 ## License

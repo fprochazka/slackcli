@@ -5,12 +5,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.console import Console
 
 from . import __version__
 from .config import get_config_path, load_config
 from .context import get_context
-from .logging import error_console, get_logger, setup_logging
+from .logging import console, error_console, get_logger, setup_logging
 
 app = typer.Typer(
     name="slack",
@@ -19,7 +18,6 @@ app = typer.Typer(
     rich_markup_mode=None,
 )
 
-console = Console()
 logger = get_logger(__name__)
 
 # Global context reference (for use in this module)

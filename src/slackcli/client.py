@@ -10,7 +10,8 @@ from slack_sdk.errors import SlackApiError
 from .logging import get_logger
 
 if TYPE_CHECKING:
-    from .commands.conversations import Conversation, ConversationLoadResult
+    from .commands.conversations import ConversationLoadResult
+    from .models import Conversation
     from .users import UserInfo
 
 logger = get_logger(__name__)
@@ -110,7 +111,7 @@ class SlackCli:
         """
         from .users import get_channel_names
 
-        return get_channel_names(self.org_name)
+        return get_channel_names(self)
 
     # -------------------------------------------------------------------------
     # Messages
