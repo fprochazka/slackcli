@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from .logging import console
 
 if TYPE_CHECKING:
-    from .models import Conversation, Message, MessagesOutput, ResolvedMessage
+    from .models import Conversation, FileAttachment, Message, MessagesOutput, ResolvedMessage
 
 
 def output_json(data: dict) -> None:
@@ -84,6 +84,27 @@ def format_reactions(
     return " ".join(parts)
 
 
+def format_files(files: list[FileAttachment], indent: str = "  ") -> str:
+    """Format file attachments for text display.
+
+    Args:
+        files: List of FileAttachment objects.
+        indent: Indentation string.
+
+    Returns:
+        Formatted files string.
+    """
+    if not files:
+        return ""
+
+    lines = []
+    for f in files:
+        size_str = f.format_size()
+        lines.append(f"{indent}[file: {f.name} ({size_str})]")
+        lines.append(f"{indent}  download: {f.url_private_download}")
+    return "\n".join(lines)
+
+
 def output_messages_json(output: MessagesOutput, with_threads: bool = False) -> None:
     """Output messages as JSON.
 
@@ -131,8 +152,19 @@ def _output_message_text(
     user_name = format_user_name(msg.user_name, msg.user_id)
     print(f"{base_indent}{msg.datetime_str}  {user_name}")
 
-    # Print message text
-    print(format_message_text(msg.text, indent=text_indent))
+    # Print message text (or file attachments if no text)
+    if msg.text:
+        print(format_message_text(msg.text, indent=text_indent))
+    elif msg.files:
+        # No text but has files - will be printed below
+        pass
+    else:
+        print(format_message_text("", indent=text_indent))
+
+    # Print file attachments
+    files_str = format_files(msg.files, indent=text_indent)
+    if files_str:
+        print(files_str)
 
     # Print metadata line (replies, reactions)
     meta_parts = []
@@ -180,6 +212,10 @@ def output_thread_text(
     print(f"{parent.datetime_str}  {user_name} [parent]")
     print(format_message_text(parent.text))
 
+    files_str = format_files(parent.files, indent="  ")
+    if files_str:
+        print(files_str)
+
     reactions_str = format_reactions(parent.reactions, reactions_mode)
     if reactions_str:
         print(f"  {reactions_str}")
@@ -191,6 +227,10 @@ def output_thread_text(
         user_name = format_user_name(reply.user_name, reply.user_id)
         print(f"  {reply.datetime_str}  {user_name}")
         print(format_message_text(reply.text, indent="    "))
+
+        files_str = format_files(reply.files, indent="    ")
+        if files_str:
+            print(files_str)
 
         reactions_str = format_reactions(reply.reactions, reactions_mode)
         if reactions_str:
@@ -230,6 +270,10 @@ def output_resolved_message_text(resolved: ResolvedMessage) -> None:
     user_name = format_user_name(msg.user_name, msg.user_id)
     print(f"{msg.datetime_str}  {user_name}")
     print(format_message_text(msg.text))
+
+    files_str = format_files(msg.files)
+    if files_str:
+        print(files_str)
 
 
 def output_conversations_text(

@@ -818,3 +818,86 @@ class SlackCli:
             "ok": True,
             "file": file_info,
         }
+
+    def download_file(
+        self,
+        url: str,
+        output_path: str,
+    ) -> dict[str, Any]:
+        """Download a file from Slack.
+
+        Slack files require authentication via the token in the Authorization header.
+
+        Args:
+            url: The url_private_download URL of the file.
+            output_path: Path where the file should be saved.
+
+        Returns:
+            Dictionary with download result info.
+
+        Raises:
+            SlackApiError: If the download fails.
+        """
+        import urllib.request
+        from pathlib import Path
+
+        logger.debug(f"Downloading file from {url} to {output_path}")
+
+        # Create request with authorization header
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {self.token}")
+
+        try:
+            with urllib.request.urlopen(req) as response:
+                # Get filename from Content-Disposition header if available
+                content_disposition = response.headers.get("Content-Disposition", "")
+                suggested_name = None
+                if "filename=" in content_disposition:
+                    import re
+
+                    match = re.search(r'filename="?([^";\r\n]+)"?', content_disposition)
+                    if match:
+                        suggested_name = match.group(1)
+
+                # Create output directory if it doesn't exist
+                output = Path(output_path)
+                output.parent.mkdir(parents=True, exist_ok=True)
+
+                # Download and write the file
+                content = response.read()
+                output.write_bytes(content)
+
+                return {
+                    "ok": True,
+                    "path": str(output),
+                    "size": len(content),
+                    "suggested_name": suggested_name,
+                }
+
+        except urllib.error.HTTPError as e:
+            raise SlackApiError(f"Download failed: HTTP {e.code} {e.reason}", {"error": str(e)}) from e
+        except urllib.error.URLError as e:
+            raise SlackApiError(f"Download failed: {e.reason}", {"error": str(e)}) from e
+
+    def get_file_info(self, file_id: str) -> dict[str, Any]:
+        """Get information about a file.
+
+        Args:
+            file_id: The Slack file ID.
+
+        Returns:
+            The file info from the API.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Getting file info for {file_id}")
+        response = self.client.files_info(file=file_id)
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "file": response.get("file", {}),
+        }

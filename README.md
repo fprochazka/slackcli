@@ -114,6 +114,29 @@ slack messages '#general' 1234567890.123456
 slack messages '#general' --json
 ```
 
+Messages with file attachments will show the file name, size, and download URL.
+
+### Download Files
+
+```bash
+# Download by file ID
+slack download F0ABC123DEF
+
+# Download by URL (from message output)
+slack download 'https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt'
+
+# Specify output path
+slack download F0ABC123DEF --output /path/to/file.txt
+
+# Download to a directory (uses original filename)
+slack download F0ABC123DEF --output ./downloads/
+
+# JSON output
+slack download F0ABC123DEF --json
+```
+
+Files are downloaded to `/tmp/slackcli/` by default.
+
 ### Resolve Message URLs
 
 ```bash
@@ -214,7 +237,15 @@ Machine-readable format for AI agents:
       "text": "Hello team...",
       "thread_ts": null,
       "reply_count": 3,
-      "reactions": [{"name": "thumbsup", "count": 5, "users": ["alice", "bob"]}]
+      "reactions": [{"name": "thumbsup", "count": 5, "users": ["alice", "bob"]}],
+      "files": [
+        {
+          "id": "F0123456789",
+          "name": "report.pdf",
+          "size": 102400,
+          "url_private_download": "https://files.slack.com/..."
+        }
+      ]
     }
   ]
 }
@@ -274,6 +305,7 @@ src/slackcli/
     ├── messages.py       # Message commands
     ├── resolve.py        # URL resolution
     ├── send.py           # Send messages
+    ├── download.py       # Download files
     ├── edit.py           # Edit messages
     ├── delete.py         # Delete messages
     └── react.py          # Add/remove reactions

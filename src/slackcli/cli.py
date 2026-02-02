@@ -28,6 +28,7 @@ from .commands import (  # noqa: E402
     conversations,
     delete,
     dm,
+    download,
     edit,
     messages,
     pins,
@@ -42,6 +43,7 @@ app.add_typer(conversations.app, name="conversations")
 app.command("messages")(messages.messages_command)
 app.command("resolve")(resolve.resolve_command)
 app.command("send")(send.send_command)
+app.command("download")(download.download_command)
 app.command("dm")(dm.dm_command)
 app.command("edit")(edit.edit_command)
 app.command("delete")(delete.delete_command)

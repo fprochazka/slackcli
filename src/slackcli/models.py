@@ -18,6 +18,68 @@ MessageTextFunc = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str
 
 
 @dataclass
+class FileAttachment:
+    """Represents a file attached to a Slack message."""
+
+    id: str
+    name: str
+    title: str
+    mimetype: str
+    filetype: str
+    size: int
+    url_private: str
+    url_private_download: str
+    permalink: str
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> FileAttachment:
+        """Create a FileAttachment from Slack API response data.
+
+        Args:
+            data: The file data from Slack API.
+
+        Returns:
+            A FileAttachment instance.
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            title=data.get("title", ""),
+            mimetype=data.get("mimetype", ""),
+            filetype=data.get("filetype", ""),
+            size=data.get("size", 0),
+            url_private=data.get("url_private", ""),
+            url_private_download=data.get("url_private_download", ""),
+            permalink=data.get("permalink", ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "title": self.title,
+            "mimetype": self.mimetype,
+            "filetype": self.filetype,
+            "size": self.size,
+            "url_private": self.url_private,
+            "url_private_download": self.url_private_download,
+            "permalink": self.permalink,
+        }
+
+    def format_size(self) -> str:
+        """Format the file size for human display."""
+        if self.size < 1024:
+            return f"{self.size} B"
+        elif self.size < 1024 * 1024:
+            return f"{self.size / 1024:.1f} KB"
+        elif self.size < 1024 * 1024 * 1024:
+            return f"{self.size / (1024 * 1024):.1f} MB"
+        else:
+            return f"{self.size / (1024 * 1024 * 1024):.1f} GB"
+
+
+@dataclass
 class Reaction:
     """Represents a reaction on a Slack message."""
 
@@ -69,6 +131,7 @@ class Message:
     reply_count: int
     reactions: list[Reaction] = field(default_factory=list)
     replies: list[Message] = field(default_factory=list)
+    files: list[FileAttachment] = field(default_factory=list)
 
     @property
     def datetime(self) -> datetime | None:
@@ -126,6 +189,10 @@ class Message:
         replies_data = data.get("replies", [])
         replies = [cls.from_api(r, users, channels, get_text_func, resolve_mentions_func) for r in replies_data]
 
+        # Parse file attachments
+        files_data = data.get("files", [])
+        files = [FileAttachment.from_api(f) for f in files_data]
+
         return cls(
             ts=ts,
             user_id=user_id or None,
@@ -135,6 +202,7 @@ class Message:
             reply_count=data.get("reply_count", 0),
             reactions=reactions,
             replies=replies,
+            files=files,
         )
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
@@ -154,6 +222,7 @@ class Message:
             "thread_ts": self.thread_ts,
             "reply_count": self.reply_count,
             "reactions": [r.to_dict() for r in self.reactions],
+            "files": [f.to_dict() for f in self.files],
         }
 
         if include_replies and self.replies:
