@@ -123,8 +123,8 @@ def list_users(
         slack users list --bots --deleted
         slack users list --json
     """
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     try:
         if refresh:
@@ -206,8 +206,8 @@ def search_users(
         slack users search "john@example.com"
         slack users search "john" --json
     """
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     try:
         # Load users from cache, fetch if not available
@@ -289,8 +289,8 @@ def get_user_command(
         slack users get john@example.com
         slack users get @john.doe --json
     """
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     try:
         # Check if the user_ref looks like a raw user ID

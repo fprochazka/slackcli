@@ -411,8 +411,8 @@ def search_messages(
     logger.debug(f"Search query: {full_query}")
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     if not output_json_flag:
         console.print(f"[dim]Searching for messages: {full_query}...[/dim]")
@@ -564,8 +564,8 @@ def search_files(
     logger.debug(f"Search query: {full_query}")
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     if not output_json_flag:
         console.print(f"[dim]Searching for files: {full_query}...[/dim]")

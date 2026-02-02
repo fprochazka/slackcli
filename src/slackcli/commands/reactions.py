@@ -85,8 +85,8 @@ def add_reaction(
         raise typer.Exit(1)
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -157,8 +157,8 @@ def remove_reaction(
         raise typer.Exit(1)
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)

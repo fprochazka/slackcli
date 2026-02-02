@@ -126,8 +126,8 @@ def download_file(
         slack files download https://files.slack.com/files-pri/T0XXX-F0XXX/download/file.txt
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Check if input is a URL or file ID
     file_id: str | None = None

@@ -99,8 +99,8 @@ def list_pins(
         slack pins list C0123456789
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -217,8 +217,8 @@ def add_pin(
         slack pins add C0123456789 1234567890.123456
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -275,8 +275,8 @@ def remove_pin(
         slack pins remove C0123456789 1234567890.123456
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)

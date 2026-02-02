@@ -394,8 +394,8 @@ def list_messages(
             raise typer.Exit(1) from None
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -566,8 +566,8 @@ def send_message(
         raise typer.Exit(1)
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve target (channel or user DM)
     channel_id, display_name, is_dm = resolve_target(slack, target)
@@ -688,8 +688,8 @@ def edit_message(
         raise typer.Exit(1)
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -754,8 +754,8 @@ def delete_message(
         slack messages delete C0123456789 1234567890.123456 --force
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)

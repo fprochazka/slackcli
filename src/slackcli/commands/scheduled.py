@@ -173,8 +173,8 @@ def list_scheduled(
         slack scheduled list --json
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel if provided
     channel_id: str | None = None
@@ -302,8 +302,8 @@ def create_scheduled(
         raise typer.Exit(1)
 
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
@@ -374,8 +374,8 @@ def delete_scheduled(
         slack scheduled delete C0123456789 Q1234ABCD5678EFGH
     """
     # Get org context
-    cli_ctx = get_context()
-    slack = cli_ctx.get_slack_client()
+    ctx = get_context()
+    slack = ctx.get_slack_client()
 
     # Resolve channel
     channel_id, channel_name = resolve_channel(slack, channel)
