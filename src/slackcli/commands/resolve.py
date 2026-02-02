@@ -12,6 +12,7 @@ from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_text
 from ..context import get_context
+from ..errors import format_error_with_hint
 from ..logging import error_console, get_logger
 from ..models import Message, ResolvedMessage, resolve_slack_mentions
 from ..output import output_resolved_message_json, output_resolved_message_text
@@ -177,7 +178,10 @@ def resolve_command(
         else:
             message_data = slack.get_message(parsed.channel_id, parsed.message_ts)
     except SlackApiError as e:
-        error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
 
     if message_data is None:

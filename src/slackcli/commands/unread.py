@@ -11,6 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
+from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..output import output_json
 
@@ -273,7 +274,10 @@ def fetch_unread_channels(
                         unread_channels.append(result)
 
     except SlackApiError as e:
-        error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
 
     # Sort by unread count descending

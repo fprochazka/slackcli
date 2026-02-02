@@ -417,7 +417,10 @@ def list_messages(
                 console.print(f"[dim]Fetching messages{time_range}...[/dim]")
             fetched_messages = slack.get_messages(channel_id, oldest, latest, limit)
     except SlackApiError as e:
-        error_console.print(f"[red]Slack API error: {e.response.get('error', str(e))}[/red]")
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
 
     if not fetched_messages:
