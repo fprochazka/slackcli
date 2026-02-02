@@ -33,6 +33,26 @@ class SlackCli:
             self._client = create_web_client(token=self.token)
         return self._client
 
+    def _check_response(self, response: dict, operation: str = "API call") -> dict:
+        """Check if Slack API response is OK, raise SlackApiError if not.
+
+        Args:
+            response: The Slack API response dict.
+            operation: Description of the operation for error messages.
+
+        Returns:
+            The response dict if OK.
+
+        Raises:
+            SlackApiError: If response["ok"] is False.
+        """
+        if not response.get("ok"):
+            raise SlackApiError(
+                f"{operation} failed: {response.get('error', 'unknown error')}",
+                response,
+            )
+        return response
+
     # -------------------------------------------------------------------------
     # Conversations
     # -------------------------------------------------------------------------
@@ -173,9 +193,7 @@ class SlackCli:
 
             logger.debug(f"Fetching messages (cursor: {cursor or 'initial'})")
             response = self.client.conversations_history(**kwargs)
-
-            if not response["ok"]:
-                raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+            self._check_response(response, "Fetch messages")
 
             batch = response.get("messages", [])
             messages.extend(batch)
@@ -226,9 +244,7 @@ class SlackCli:
 
             logger.debug(f"Fetching thread replies (cursor: {cursor or 'initial'})")
             response = self.client.conversations_replies(**kwargs)
-
-            if not response["ok"]:
-                raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+            self._check_response(response, "Fetch thread replies")
 
             batch = response.get("messages", [])
             messages.extend(batch)
@@ -338,9 +354,7 @@ class SlackCli:
 
         logger.debug(f"Sending message to {channel_id}" + (f" (thread: {thread_ts})" if thread_ts else ""))
         response = self.client.chat_postMessage(**kwargs)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Send message")
 
         return {
             "ok": True,
@@ -374,9 +388,7 @@ class SlackCli:
             ts=ts,
             text=text,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Edit message")
 
         return {
             "ok": True,
@@ -408,9 +420,7 @@ class SlackCli:
             channel=channel_id,
             ts=ts,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Delete message")
 
         return {
             "ok": True,
@@ -447,9 +457,7 @@ class SlackCli:
             timestamp=ts,
             name=emoji,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Add reaction")
 
         return {
             "ok": True,
@@ -483,9 +491,7 @@ class SlackCli:
             timestamp=ts,
             name=emoji,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Remove reaction")
 
         return {
             "ok": True,
@@ -512,9 +518,7 @@ class SlackCli:
         """
         logger.debug(f"Opening DM conversation with user {user_id}")
         response = self.client.conversations_open(users=[user_id])
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Open DM")
 
         return {
             "ok": True,
@@ -547,9 +551,7 @@ class SlackCli:
             channel=channel_id,
             timestamp=ts,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Pin message")
 
         return {
             "ok": True,
@@ -579,9 +581,7 @@ class SlackCli:
             channel=channel_id,
             timestamp=ts,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Unpin message")
 
         return {
             "ok": True,
@@ -606,9 +606,7 @@ class SlackCli:
         """
         logger.debug(f"Listing pinned messages in {channel_id}")
         response = self.client.pins_list(channel=channel_id)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "List pins")
 
         return {
             "ok": True,
@@ -654,9 +652,7 @@ class SlackCli:
             f"Scheduling message in {channel_id} for {post_at}" + (f" (thread: {thread_ts})" if thread_ts else "")
         )
         response = self.client.chat_scheduleMessage(**kwargs)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Schedule message")
 
         return {
             "ok": True,
@@ -688,9 +684,7 @@ class SlackCli:
 
         logger.debug("Listing scheduled messages" + (f" for {channel_id}" if channel_id else ""))
         response = self.client.chat_scheduledMessages_list(**kwargs)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "List scheduled messages")
 
         return {
             "ok": True,
@@ -719,9 +713,7 @@ class SlackCli:
             channel=channel_id,
             scheduled_message_id=scheduled_message_id,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Delete scheduled message")
 
         return {
             "ok": True,
@@ -803,9 +795,7 @@ class SlackCli:
         )
 
         response = self.client.files_upload_v2(**kwargs)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Upload file")
 
         # Extract file info from response
         # files_upload_v2 returns file info in 'file' or 'files' key
@@ -893,9 +883,7 @@ class SlackCli:
         """
         logger.debug(f"Getting file info for {file_id}")
         response = self.client.files_info(file=file_id)
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Get file info")
 
         return {
             "ok": True,
@@ -937,9 +925,7 @@ class SlackCli:
             count=count,
             page=page,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Search messages")
 
         return {
             "ok": True,
@@ -978,9 +964,7 @@ class SlackCli:
             count=count,
             page=page,
         )
-
-        if not response["ok"]:
-            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+        self._check_response(response, "Search files")
 
         return {
             "ok": True,
