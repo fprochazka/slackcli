@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -14,6 +13,7 @@ from ..errors import format_error_with_hint, get_error_code
 from ..logging import console, error_console, get_logger
 from ..models import format_file_size
 from ..output import output_json
+from ..time_utils import parse_date_spec
 
 if TYPE_CHECKING:
     from ..client import SlackCli
@@ -37,48 +37,6 @@ To enable search, add the 'search:read' scope to your Slack app:
 4. Reinstall the app to your workspace to get a new token
 5. Update your token in ~/.config/slackcli/config.toml
 """
-
-
-def parse_date_spec(spec: str) -> str:
-    """Parse a date specification into YYYY-MM-DD format for Slack search.
-
-    Supports:
-    - ISO date: "2024-01-15"
-    - Relative: "7d", "30d"
-    - Keywords: "today", "yesterday"
-
-    Args:
-        spec: The date specification string.
-
-    Returns:
-        Date string in YYYY-MM-DD format.
-
-    Raises:
-        ValueError: If spec cannot be parsed.
-    """
-    spec = spec.strip().lower()
-    now = datetime.now(tz=timezone.utc)
-
-    # Keywords
-    if spec == "today":
-        return now.strftime("%Y-%m-%d")
-    if spec == "yesterday":
-        return (now - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    # Relative time: 7d, 30d
-    relative_match = re.match(r"^(\d+)d$", spec)
-    if relative_match:
-        days = int(relative_match.group(1))
-        return (now - timedelta(days=days)).strftime("%Y-%m-%d")
-
-    # ISO date: 2024-01-15
-    try:
-        dt = datetime.fromisoformat(spec)
-        return dt.strftime("%Y-%m-%d")
-    except ValueError:
-        pass
-
-    raise ValueError(f"Cannot parse date specification: {spec}")
 
 
 def build_search_query(

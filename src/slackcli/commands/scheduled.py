@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta
 from typing import Annotated, Any
 
@@ -13,6 +12,7 @@ from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..output import format_message_text, output_json
+from ..time_utils import parse_future_time
 from .messages import resolve_channel
 
 logger = get_logger(__name__)
@@ -23,90 +23,6 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode=None,
 )
-
-
-def parse_future_time(spec: str) -> datetime:
-    """Parse a future time specification into a datetime.
-
-    All times are interpreted in the user's local timezone. The returned
-    datetime is timezone-aware (local timezone) and can be converted to
-    a Unix timestamp for the Slack API.
-
-    Supports:
-    - ISO datetime: "2024-01-15 09:00", "2024-01-15T09:00"
-    - Relative future: "in 1h", "in 30m", "in 2d"
-    - Natural language: "tomorrow", "tomorrow 9am", "tomorrow 14:00"
-
-    Args:
-        spec: The time specification string.
-
-    Returns:
-        Parsed datetime in local timezone (always in the future).
-
-    Raises:
-        ValueError: If spec cannot be parsed or is not in the future.
-    """
-    spec = spec.strip()
-    # Use local time for all parsing - users expect "9am" to mean 9am local time
-    now = datetime.now().astimezone()
-    local_tz = now.tzinfo
-
-    # Relative future time: "in 1h", "in 30m", "in 2d"
-    relative_match = re.match(r"^in\s+(\d+)\s*([hdm])$", spec, re.IGNORECASE)
-    if relative_match:
-        amount = int(relative_match.group(1))
-        unit = relative_match.group(2).lower()
-        if unit == "h":
-            return now + timedelta(hours=amount)
-        if unit == "d":
-            return now + timedelta(days=amount)
-        if unit == "m":
-            return now + timedelta(minutes=amount)
-
-    # "tomorrow" or "tomorrow 9am" or "tomorrow 14:00"
-    if spec.lower().startswith("tomorrow"):
-        tomorrow = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
-        rest = spec[8:].strip()  # After "tomorrow"
-        if rest:
-            # Try to parse time part: "9am", "14:00", "9:30am", "9:30"
-            time_match = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", rest, re.IGNORECASE)
-            if time_match:
-                hour = int(time_match.group(1))
-                minute = int(time_match.group(2)) if time_match.group(2) else 0
-                ampm = time_match.group(3)
-
-                if ampm:
-                    ampm = ampm.lower()
-                    if ampm == "pm" and hour != 12:
-                        hour += 12
-                    elif ampm == "am" and hour == 12:
-                        hour = 0
-
-                tomorrow = tomorrow.replace(hour=hour, minute=minute)
-            else:
-                raise ValueError(f"Cannot parse time in: {spec}")
-        return tomorrow
-
-    # ISO datetime: "2024-01-15 09:00" or "2024-01-15T09:00:00"
-    try:
-        # Try datetime with time
-        if "T" in spec or " " in spec:
-            # Normalize separator
-            dt = datetime.fromisoformat(spec.replace(" ", "T"))
-        else:
-            # Just date, default to 9am
-            dt = datetime.fromisoformat(spec)
-            dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
-
-        # If no timezone specified, assume local timezone
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=local_tz)
-
-        return dt
-    except ValueError:
-        pass
-
-    raise ValueError(f"Cannot parse time specification: {spec}")
 
 
 def _format_scheduled_message(

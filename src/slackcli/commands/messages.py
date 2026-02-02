@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -22,6 +22,7 @@ from ..output import (
     output_messages_text,
     output_thread_text,
 )
+from ..time_utils import parse_time_spec
 
 if TYPE_CHECKING:
     from ..client import SlackCli
@@ -34,67 +35,6 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode=None,
 )
-
-
-def parse_time_spec(spec: str) -> datetime:
-    """Parse a time specification into a datetime.
-
-    Supports:
-    - ISO date: "2024-01-15"
-    - Relative: "7d", "1h", "2w", "30m"
-    - Keywords: "today", "yesterday"
-
-    Args:
-        spec: The time specification string.
-
-    Returns:
-        Parsed datetime.
-
-    Raises:
-        ValueError: If spec cannot be parsed.
-    """
-    spec = spec.strip().lower()
-    now = datetime.now(tz=timezone.utc)
-
-    # Keywords
-    if spec == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if spec == "yesterday":
-        return (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    if spec == "now":
-        return now
-
-    # Relative time: 7d, 1h, 2w, 30m
-    relative_match = re.match(r"^(\d+)([hdwm])$", spec)
-    if relative_match:
-        amount = int(relative_match.group(1))
-        unit = relative_match.group(2)
-        if unit == "h":
-            return now - timedelta(hours=amount)
-        if unit == "d":
-            return now - timedelta(days=amount)
-        if unit == "w":
-            return now - timedelta(weeks=amount)
-        if unit == "m":
-            return now - timedelta(minutes=amount)
-
-    # ISO date: 2024-01-15 or 2024-01-15T10:30:00
-    try:
-        # Try datetime with time
-        if "T" in spec or " " in spec:
-            dt = datetime.fromisoformat(spec.replace(" ", "T"))
-        else:
-            # Just date, start of day
-            dt = datetime.fromisoformat(spec)
-            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        # If no timezone, assume UTC
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except ValueError:
-        pass
-
-    raise ValueError(f"Cannot parse time specification: {spec}")
 
 
 def resolve_channel(slack: SlackCli, channel_ref: str) -> tuple[str, str]:
