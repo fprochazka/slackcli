@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 import typer
@@ -28,6 +28,10 @@ app = typer.Typer(
 def parse_future_time(spec: str) -> datetime:
     """Parse a future time specification into a datetime.
 
+    All times are interpreted in the user's local timezone. The returned
+    datetime is timezone-aware (local timezone) and can be converted to
+    a Unix timestamp for the Slack API.
+
     Supports:
     - ISO datetime: "2024-01-15 09:00", "2024-01-15T09:00"
     - Relative future: "in 1h", "in 30m", "in 2d"
@@ -37,13 +41,15 @@ def parse_future_time(spec: str) -> datetime:
         spec: The time specification string.
 
     Returns:
-        Parsed datetime (always in the future).
+        Parsed datetime in local timezone (always in the future).
 
     Raises:
         ValueError: If spec cannot be parsed or is not in the future.
     """
     spec = spec.strip()
-    now = datetime.now(tz=timezone.utc)
+    # Use local time for all parsing - users expect "9am" to mean 9am local time
+    now = datetime.now().astimezone()
+    local_tz = now.tzinfo
 
     # Relative future time: "in 1h", "in 30m", "in 2d"
     relative_match = re.match(r"^in\s+(\d+)\s*([hdm])$", spec, re.IGNORECASE)
@@ -92,9 +98,9 @@ def parse_future_time(spec: str) -> datetime:
             dt = datetime.fromisoformat(spec)
             dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
 
-        # If no timezone, assume UTC
+        # If no timezone specified, assume local timezone
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=local_tz)
 
         return dt
     except ValueError:
@@ -123,11 +129,11 @@ def _format_scheduled_message(
     scheduled_message_id = msg.get("id", "")
     text = msg.get("text", "")
 
-    # Format timestamp to datetime
+    # Format timestamp to datetime (display in local timezone)
     if post_at:
         try:
-            dt = datetime.fromtimestamp(post_at, tz=timezone.utc)
-            datetime_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            dt = datetime.fromtimestamp(post_at).astimezone()
+            datetime_str = dt.strftime("%Y-%m-%d %H:%M:%S %Z")
         except (ValueError, OSError):
             datetime_str = str(post_at)
     else:
@@ -283,8 +289,8 @@ def create_scheduled(
         error_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None
 
-    # Check if time is in the future
-    now = datetime.now(tz=timezone.utc)
+    # Check if time is in the future (use local time for comparison)
+    now = datetime.now().astimezone()
     if scheduled_time <= now:
         error_console.print(f"[red]Scheduled time must be in the future. Got: {scheduled_time.isoformat()}[/red]")
         raise typer.Exit(1)
@@ -306,7 +312,7 @@ def create_scheduled(
     # Schedule message
     try:
         if not output_json_flag:
-            time_str = scheduled_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+            time_str = scheduled_time.strftime("%Y-%m-%d %H:%M:%S %Z")
             if thread:
                 console.print(f"[dim]Scheduling reply in thread {thread} in #{channel_name} for {time_str}...[/dim]")
             else:
@@ -324,8 +330,9 @@ def create_scheduled(
         else:
             scheduled_message_id = result.get("scheduled_message_id", "unknown")
             post_at_ts = result.get("post_at", scheduled_time.timestamp())
-            post_at_dt = datetime.fromtimestamp(post_at_ts, tz=timezone.utc)
-            post_at_str = post_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            # Display in local timezone
+            post_at_dt = datetime.fromtimestamp(post_at_ts).astimezone()
+            post_at_str = post_at_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
             console.print("[green]Message scheduled successfully.[/green]")
             console.print(f"[dim]scheduled_message_id={scheduled_message_id}, post_at={post_at_str}[/dim]")
 
