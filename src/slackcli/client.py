@@ -329,3 +329,40 @@ class SlackCli:
             "ts": response.get("ts"),
             "message": response.get("message"),
         }
+
+    def edit_message(
+        self,
+        channel_id: str,
+        ts: str,
+        text: str,
+    ) -> dict[str, Any]:
+        """Edit an existing message in a channel.
+
+        Args:
+            channel_id: The channel ID.
+            ts: The timestamp of the message to edit.
+            text: The new message text.
+
+        Returns:
+            The API response data including the updated message.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Editing message {ts} in {channel_id}")
+        response = self.client.chat_update(
+            channel=channel_id,
+            ts=ts,
+            text=text,
+        )
+
+        if not response["ok"]:
+            raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "ts": response.get("ts"),
+            "text": response.get("text"),
+            "message": response.get("message"),
+        }
