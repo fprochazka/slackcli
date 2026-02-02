@@ -18,7 +18,12 @@ This project is **not** affiliated with Slack or Salesforce. If you're looking t
 **When to use slackcli:**
 - Reading and searching Slack messages
 - Sending, editing, and deleting messages
+- Sending direct messages to users
+- Uploading files to channels
 - Adding and removing reactions
+- Pinning and unpinning messages
+- Scheduling messages for later delivery
+- Managing and searching users
 - Automating channel exploration
 - Integrating Slack into AI agents and scripts
 - Quick API interactions from the terminal
@@ -164,8 +169,33 @@ slack send '#general' --thread 1234567890.123456 "Reply in thread"
 # Read message from stdin
 echo "Hello" | slack send '#general' --stdin
 
+# Upload a file
+slack send '#general' --file ./report.pdf
+
+# Upload a file with a message
+slack send '#general' "Here's the report" --file ./report.pdf
+
+# Upload multiple files
+slack send '#general' --file ./a.csv --file ./b.csv
+
 # JSON output (returns message timestamp)
 slack send '#general' "Message" --json
+```
+
+### Send Direct Messages
+
+```bash
+# Send a DM by username
+slack dm '@john.doe' "Hello!"
+
+# Send a DM by user ID
+slack dm 'U0123456789' "Hello by ID"
+
+# Send a DM by email
+slack dm '@john@example.com' "Hello by email"
+
+# Read message from stdin
+echo "Hello" | slack dm '@john.doe' --stdin
 ```
 
 ### Edit Messages
@@ -197,6 +227,63 @@ slack react '#general' 1234567890.123456 :+1:  # Colons are stripped
 
 # Remove a reaction
 slack unreact '#general' 1234567890.123456 thumbsup
+```
+
+### Pin Management
+
+```bash
+# Pin a message
+slack pin '#general' 1234567890.123456
+
+# Unpin a message
+slack unpin '#general' 1234567890.123456
+
+# List pinned messages in a channel
+slack pins '#general'
+
+# JSON output
+slack pins '#general' --json
+```
+
+### Schedule Messages
+
+```bash
+# Schedule a message for a specific time
+slack schedule '#general' "2025-02-03 09:00" "Good morning!"
+
+# Schedule relative to now
+slack schedule '#general' "in 1h" "Reminder"
+
+# Schedule for tomorrow
+slack schedule '#general' "tomorrow 9am" "Daily standup"
+
+# List scheduled messages
+slack scheduled list
+
+# List scheduled messages for a specific channel
+slack scheduled list '#general'
+
+# Delete a scheduled message
+slack scheduled delete '#general' <scheduled_message_id>
+```
+
+### User Management
+
+```bash
+# List all users
+slack users list
+
+# List users as JSON
+slack users list --json
+
+# Search for users
+slack users search "john"
+
+# Get user details by username
+slack users get @john.doe
+
+# Get user details by ID
+slack users get U0123456789
 ```
 
 ### Show Configuration
@@ -300,6 +387,8 @@ src/slackcli/
 ├── users.py            # User info resolution
 ├── blocks.py           # Block Kit rendering
 ├── logging.py          # Logging setup
+├── errors.py           # Custom exceptions
+├── retry.py            # Retry utilities for API calls
 └── commands/
     ├── conversations.py  # Conversation commands
     ├── messages.py       # Message commands
@@ -308,7 +397,11 @@ src/slackcli/
     ├── download.py       # Download files
     ├── edit.py           # Edit messages
     ├── delete.py         # Delete messages
-    └── react.py          # Add/remove reactions
+    ├── react.py          # Add/remove reactions
+    ├── dm.py             # Direct messages
+    ├── pins.py           # Pin management
+    ├── schedule.py       # Scheduled messages
+    └── users.py          # User management
 ```
 
 ## License
