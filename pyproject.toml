@@ -5,6 +5,7 @@ description = "A command-line interface for Slack"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "certifi>=2024.0.0",
     "rich>=14.3.2",
     "slack-sdk>=3.39.0",
     "tomli>=2.4.0",

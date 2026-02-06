@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ssl
+
+import certifi
 from slack_sdk import WebClient
 from slack_sdk.http_retry import RetryHandler
 from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
@@ -43,6 +46,15 @@ def get_default_retry_handlers(max_retry_count: int = DEFAULT_MAX_RETRY_COUNT) -
     ]
 
 
+def create_ssl_context() -> ssl.SSLContext:
+    """Create an SSL context using certifi's CA bundle.
+
+    This ensures SSL verification works on all platforms, including macOS
+    where the system certificate store may not be accessible to Python.
+    """
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def create_web_client(
     token: str,
     retry_handlers: list[RetryHandler] | None = None,
@@ -61,7 +73,7 @@ def create_web_client(
     if retry_handlers is None:
         retry_handlers = get_default_retry_handlers(max_retry_count=max_retry_count)
 
-    client = WebClient(token=token)
+    client = WebClient(token=token, ssl=create_ssl_context())
 
     # Add retry handlers
     for handler in retry_handlers:

@@ -837,8 +837,10 @@ class SlackCli:
         req = urllib.request.Request(url)
         req.add_header("Authorization", f"Bearer {self.token}")
 
+        from .retry import create_ssl_context
+
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, context=create_ssl_context()) as response:
                 # Get filename from Content-Disposition header if available
                 content_disposition = response.headers.get("Content-Disposition", "")
                 suggested_name = None
