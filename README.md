@@ -349,6 +349,10 @@ Machine-readable format for AI agents:
 }
 ```
 
+## Claude Code
+
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill is available for this project, allowing Claude to use the `slack` CLI autonomously. See [slackcli skill](https://github.com/fprochazka/claude-code-plugins/tree/master/plugins/slackcli) for installation and usage instructions.
+
 ## Developing
 
 ### Setup
