@@ -157,9 +157,51 @@ def show_config() -> None:
         console.print("[dim]No org selected (use --org or SLACK_ORG)[/dim]")
 
 
+def _hoist_global_options(argv: list[str]) -> list[str]:
+    """Move global options to before the first subcommand.
+
+    Typer/Click requires group-level options to appear before subcommands.
+    This function allows users to place --org, --config, --verbose, and
+    --version anywhere in the command line.
+    """
+    # Options that take a value
+    value_options = {"--org", "-o", "--config", "-c"}
+    # Boolean flags
+    flag_options = {"--verbose", "-v", "--version", "-V"}
+
+    hoisted: list[str] = []
+    rest: list[str] = []
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+
+        # Handle --org=value form
+        if any(arg.startswith(f"{opt}=") for opt in value_options):
+            hoisted.append(arg)
+            i += 1
+        # Handle --org value form
+        elif arg in value_options:
+            hoisted.append(arg)
+            if i + 1 < len(argv):
+                i += 1
+                hoisted.append(argv[i])
+            i += 1
+        # Handle boolean flags
+        elif arg in flag_options:
+            hoisted.append(arg)
+            i += 1
+        else:
+            rest.append(arg)
+            i += 1
+
+    return hoisted + rest
+
+
 def cli() -> None:
     """Main entry point for the CLI."""
     try:
+        sys.argv[1:] = _hoist_global_options(sys.argv[1:])
         app()
     except Exception as e:
         error_console.print(f"[red]Error: {e}[/red]")
