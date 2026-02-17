@@ -213,16 +213,38 @@ def render_rich_text_block(
 def render_section_block(block: dict[str, Any]) -> str:
     """Render a section block to plain text.
 
+    Handles both the main text and optional accessory (button, image, overflow).
+
     Args:
-        block: The section block with 'text' field.
+        block: The section block with 'text' field and optional 'accessory'.
 
     Returns:
         Plain text representation.
     """
+    parts = []
+
     text_obj = block.get("text", {})
-    if isinstance(text_obj, dict):
-        return text_obj.get("text", "")
-    return str(text_obj) if text_obj else ""
+    text = text_obj.get("text", "") if isinstance(text_obj, dict) else (str(text_obj) if text_obj else "")
+    if text:
+        parts.append(text)
+
+    # Render accessory (inline element like button, image, overflow)
+    accessory = block.get("accessory", {})
+    if accessory:
+        acc_type = accessory.get("type", "")
+        if acc_type == "button":
+            btn_text = accessory.get("text", {})
+            label = btn_text.get("text", "Button") if isinstance(btn_text, dict) else (btn_text or "Button")
+            url = accessory.get("url", "")
+            if url:
+                parts.append(f"[{label}] ({url})")
+            else:
+                parts.append(f"[{label}]")
+        elif acc_type == "image":
+            alt_text = accessory.get("alt_text", "image")
+            parts.append(f"[Image: {alt_text}]")
+
+    return "\n".join(parts)
 
 
 def render_context_block(block: dict[str, Any]) -> str:
@@ -431,6 +453,22 @@ def render_attachment(
             if blocks_text:
                 parts.append(blocks_text)
 
+    # Image URL (e.g. Datadog graph snapshots)
+    image_url = attachment.get("image_url", "")
+    if image_url:
+        parts.append(f"[Image] ({image_url})")
+
+    # Legacy actions (buttons at attachment level, e.g. Datadog)
+    actions = attachment.get("actions", [])
+    if actions:
+        action_labels = []
+        for action in actions:
+            action_text = action.get("text", "")
+            if action_text:
+                action_labels.append(f"[{action_text}]")
+        if action_labels:
+            parts.append(" ".join(action_labels))
+
     # From URL (source link)
     from_url = attachment.get("from_url", "")
     if from_url and from_url not in parts:
@@ -467,11 +505,11 @@ def get_message_text(
     users: dict[str, str],
     channels: dict[str, str],
 ) -> str:
-    """Extract text from a message, preferring blocks over plain text.
+    """Extract text from a message, combining blocks and attachments.
 
-    Slack Block Kit messages typically have both a 'text' field (fallback/summary)
-    and a 'blocks' field (rich content). For proper rendering, we should prefer
-    blocks when available, as they contain the actual formatted content.
+    Slack messages can have blocks (rich content), a text field (fallback/summary),
+    and attachments (legacy rich content). Some bots use blocks for a title and
+    attachments for the main content, so we render both when present.
 
     Args:
         message: The message object from the Slack API.
@@ -481,24 +519,29 @@ def get_message_text(
     Returns:
         Text content of the message.
     """
-    # First try to render blocks (preferred source for Block Kit messages)
+    parts = []
+
+    # Render blocks (preferred source for Block Kit messages)
     blocks = message.get("blocks", [])
     if blocks:
         blocks_text = render_blocks(blocks, users, channels)
         if blocks_text.strip():
-            return blocks_text
+            parts.append(blocks_text)
 
-    # Then try the plain text field
-    text = message.get("text", "").strip()
-    if text:
-        return text
-
-    # Finally, try attachments
+    # Render attachments (may contain additional content alongside blocks)
     attachments = message.get("attachments", [])
     if attachments:
         attachments_text = render_attachments(attachments, users, channels)
         if attachments_text.strip():
-            return attachments_text
+            parts.append(attachments_text)
+
+    if parts:
+        return "\n".join(parts)
+
+    # Fall back to the plain text field
+    text = message.get("text", "").strip()
+    if text:
+        return text
 
     # No content found
     return ""
