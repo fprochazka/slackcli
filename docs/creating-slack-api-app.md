@@ -156,7 +156,7 @@ token = "xoxp-your-token-here"
 slack conversations list
 
 # View messages in a channel
-slack messages '#general' --today
+slack messages list '#general' --today
 ```
 
 ---
