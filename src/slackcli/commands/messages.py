@@ -276,14 +276,16 @@ def list_messages(
         str | None,
         typer.Option(
             "--after",
-            help="Return up to 25 messages strictly after this ts (forward cursor).",
+            help="Return messages strictly after this ts (forward cursor). "
+            "Defaults to 25; combine with --head N to override.",
         ),
     ] = None,
     before: Annotated[
         str | None,
         typer.Option(
             "--before",
-            help="Return up to 25 messages strictly before this ts (backward cursor).",
+            help="Return messages strictly before this ts (backward cursor). "
+            "Defaults to 25; combine with --tail N to override.",
         ),
     ] = None,
     reactions: Annotated[
@@ -310,15 +312,20 @@ def list_messages(
 ) -> None:
     """List messages in a channel or thread.
 
-    Exactly one of --head / --tail / --after / --before may be set. If none
-    are specified, --tail 25 is used. Display order is always ascending
-    (oldest on top, newest on bottom) regardless of the direction flag.
+    Direction flags compose as follows: --head N or --tail N alone, --after TS
+    or --before TS alone (defaults to 25), or --after TS --head N /
+    --before TS --tail N to override the count. Any other combination is
+    rejected. If none are specified, --tail 25 is used. Display order is
+    always ascending (oldest on top, newest on bottom) regardless of the
+    direction flag.
 
     Examples:
         slack messages list '#general'                        # last 25
         slack messages list '#general' --tail 5
         slack messages list '#general' --after 1234567890.123456
         slack messages list '#general' --before 1234567890.123456
+        slack messages list '#general' --after 1234567890.123456 --head 5
+        slack messages list '#general' --before 1234567890.123456 --tail 5
         slack messages list '#general' --head 100 --since 2024-01-01
         slack messages list '#general' 1234567890.123456      # thread replies
     """
@@ -327,17 +334,29 @@ def list_messages(
         error_console.print(f"[red]Invalid --reactions value: {reactions}. Use 'off', 'counts', or 'names'.[/red]")
         raise typer.Exit(1)
 
-    # Validate mutually exclusive direction flags.
-    direction_flags = {
-        "--head": head is not None,
-        "--tail": tail is not None,
-        "--after": after is not None,
-        "--before": before is not None,
-    }
-    set_flags = [name for name, is_set in direction_flags.items() if is_set]
-    if len(set_flags) > 1:
+    # Validate direction flag combinations. Allowed:
+    #   (none), --head N, --tail N, --after TS, --before TS,
+    #   --after TS --head N, --before TS --tail N.
+    # Everything else is a user error.
+    has_head = head is not None
+    has_tail = tail is not None
+    has_after = after is not None
+    has_before = before is not None
+
+    if has_head and has_tail:
+        error_console.print("[red]--head and --tail are mutually exclusive.[/red]")
+        raise typer.Exit(1)
+    if has_after and has_before:
+        error_console.print("[red]--after and --before are mutually exclusive.[/red]")
+        raise typer.Exit(1)
+    if has_head and has_before:
         error_console.print(
-            f"[red]--head / --tail / --after / --before are mutually exclusive. Got: {', '.join(set_flags)}[/red]"
+            "[red]--head cannot be combined with --before. Use --tail N with --before, or --head N with --after.[/red]"
+        )
+        raise typer.Exit(1)
+    if has_tail and has_after:
+        error_console.print(
+            "[red]--tail cannot be combined with --after. Use --head N with --after, or --tail N with --before.[/red]"
         )
         raise typer.Exit(1)
 
@@ -347,14 +366,20 @@ def list_messages(
     count: int
     after_ts: str | None = None
     before_ts: str | None = None
-    if head is not None:
-        direction, count = "head", head
-    elif tail is not None:
-        direction, count = "tail", tail
-    elif after is not None:
+    if has_after and has_head:
+        direction, count = "head", head  # type: ignore[assignment]
+        after_ts = after
+    elif has_before and has_tail:
+        direction, count = "tail", tail  # type: ignore[assignment]
+        before_ts = before
+    elif has_head:
+        direction, count = "head", head  # type: ignore[assignment]
+    elif has_tail:
+        direction, count = "tail", tail  # type: ignore[assignment]
+    elif has_after:
         direction, count = "head", DEFAULT_CURSOR_PAGE
         after_ts = after
-    elif before is not None:
+    elif has_before:
         direction, count = "tail", DEFAULT_CURSOR_PAGE
         before_ts = before
     else:

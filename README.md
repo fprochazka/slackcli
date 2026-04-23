@@ -135,11 +135,13 @@ slack conversations list --refresh
 slack messages list '#general'
 slack messages list C0123456789
 
-# Direction flags (mutually exclusive)
-slack messages list '#general' --tail 5                    # last 5 messages
-slack messages list '#general' --head 5                    # first 5 in window
-slack messages list '#general' --after 1234567890.123456   # next 25 after cursor
-slack messages list '#general' --before 1234567890.123456  # previous 25 before cursor
+# Direction flags
+slack messages list '#general' --tail 5                             # last 5 messages
+slack messages list '#general' --head 5                             # first 5 in window
+slack messages list '#general' --after 1234567890.123456            # messages after cursor (default 25, override with --head N)
+slack messages list '#general' --before 1234567890.123456           # messages before cursor (default 25, override with --tail N)
+slack messages list '#general' --after 1234567890.123456 --head 5   # next 5 newer
+slack messages list '#general' --before 1234567890.123456 --tail 5  # previous 5 older
 
 # Compose with time windows
 slack messages list '#general' --today

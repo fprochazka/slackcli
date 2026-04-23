@@ -72,26 +72,33 @@ slack conversations list --refresh    # Force cache refresh
 
 ### List Messages
 
-Four mutually-exclusive direction flags control which slice of history to fetch.
-When no direction flag is given, the default is `--tail 25`. Results are always
-displayed oldest → newest.
+Direction flags control which slice of history to fetch. When no direction flag
+is given, the default is `--tail 25`. Results are always displayed
+oldest → newest.
 
 | Flag | Meaning |
 |------|---------|
 | `--tail N` | Last N messages in the window (default direction; default N=25) |
 | `--head N` | First N messages in the window, oldest first |
-| `--after TS` | Next 25 messages after cursor timestamp TS (forward walk) |
-| `--before TS` | Previous 25 messages before cursor timestamp TS (backward walk) |
+| `--after TS` | Messages after cursor timestamp TS (default 25, override with `--head N`) |
+| `--before TS` | Messages before cursor timestamp TS (default 25, override with `--tail N`) |
+
+Allowed combinations: `--head N` alone, `--tail N` alone, `--after TS` alone,
+`--before TS` alone, `--after TS --head N`, `--before TS --tail N`.
+`--head + --tail`, `--after + --before`, `--head + --before`, and
+`--tail + --after` are rejected.
 
 Direction flags compose with time-window flags (`--since`, `--until`, `--today`,
 `--last-7d`, `--last-30d`), which are orthogonal bounds on the window.
 
 ```bash
-slack messages list '#channel'                            # Last 25 messages
-slack messages list '#channel' --tail 5                   # Last 5 messages
-slack messages list '#channel' --head 5                   # First 5 in window
-slack messages list '#channel' --after 1234567890.123456  # Next 25 after cursor
-slack messages list '#channel' --before 1234567890.123456 # Previous 25 before cursor
+slack messages list '#channel'                                      # Last 25 messages
+slack messages list '#channel' --tail 5                             # Last 5 messages
+slack messages list '#channel' --head 5                             # First 5 in window
+slack messages list '#channel' --after 1234567890.123456            # After cursor (default 25)
+slack messages list '#channel' --before 1234567890.123456           # Before cursor (default 25)
+slack messages list '#channel' --after 1234567890.123456 --head 5   # Next 5 newer
+slack messages list '#channel' --before 1234567890.123456 --tail 5  # Previous 5 older
 
 slack messages list '#channel' --today                    # Today only
 slack messages list '#channel' --last-7d                  # Last 7 days
