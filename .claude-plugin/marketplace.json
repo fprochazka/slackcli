@@ -1,0 +1,20 @@
+{
+  "name": "fprochazka-slackcli",
+  "description": "CLI for interacting with Slack workspaces, with a skill for Claude Code",
+  "owner": {
+    "name": "Filip Procházka"
+  },
+  "plugins": [
+    {
+      "name": "slackcli",
+      "description": "Skill for interacting with Slack workspaces using the slackcli CLI",
+      "version": "2.0.7",
+      "author": {
+        "name": "Filip Procházka",
+        "url": "https://github.com/fprochazka"
+      },
+      "source": "./claude-code-plugin",
+      "homepage": "https://github.com/fprochazka/slackcli"
+    }
+  ]
+}

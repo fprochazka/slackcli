@@ -61,9 +61,27 @@ token = "xoxp-another-token"
 
 See [Creating a Slack API App](docs/creating-slack-api-app.md) for detailed setup instructions.
 
-## Claude Code
+## Claude Code Plugin
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill is available for this project, allowing Claude to use the `slack` CLI autonomously. See [slackcli skill](https://github.com/fprochazka/claude-code-plugins/tree/master/plugins/slackcli) for installation and usage instructions.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin is bundled with this repository, providing a skill that teaches Claude how to use the `slack` CLI autonomously.
+
+```bash
+# Install the slackcli CLI (if not already)
+uv tool install -e .
+
+# Add the marketplace and install the plugin
+claude plugin marketplace add fprochazka/slackcli
+claude plugin install slackcli@fprochazka-slackcli
+```
+
+To upgrade after a new release:
+
+```bash
+claude plugin marketplace update fprochazka-slackcli
+claude plugin update slackcli@fprochazka-slackcli
+```
+
+Once installed, the skill auto-approves read-only commands (`conversations list`, `messages list`, `search messages`, `users list`, `resolve`, etc.). Write operations (`messages send`, `messages edit`, `reactions add`, etc.) still require manual approval.
 
 ## Usage
 
@@ -435,6 +453,15 @@ src/slackcli/
     ├── users.py          # List, search, get users
     └── resolve.py        # URL resolution
 ```
+
+## Releasing
+
+Before tagging a release that updates the Claude Code plugin, bump the version in **both** plugin manifest files so they stay in lockstep:
+
+- `.claude-plugin/marketplace.json`
+- `claude-code-plugin/.claude-plugin/plugin.json`
+
+Then tag and push as usual.
 
 ## License
 
