@@ -272,6 +272,14 @@ class SlackCli:
             elif api_has_more_after_fetch:
                 has_more_after = True
 
+        # Cursor-implied has_more: the caller's own cursor proves there is
+        # content on the opposite side of the returned slice, even when the
+        # API's peek-ahead / has_more signal does not reach that far.
+        if before_ts is not None:
+            has_more_after = True
+        if after_ts is not None:
+            has_more_before = True
+
         return messages, has_more_before, has_more_after
 
     def get_thread_replies(
@@ -384,6 +392,13 @@ class SlackCli:
             if len(filtered) > count:
                 filtered = filtered[:count]
                 has_more_after = True
+
+        # Cursor-implied has_more: the caller's own cursor proves there is
+        # content on the opposite side of the returned slice.
+        if before_ts is not None:
+            has_more_after = True
+        if after_ts is not None:
+            has_more_before = True
 
         return [parent, *filtered], has_more_before, has_more_after
 
