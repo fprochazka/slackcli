@@ -459,7 +459,7 @@ src/slackcli/
 Before tagging a release that updates the Claude Code plugin, bump the version in **both** plugin manifest files so they stay in lockstep:
 
 - `.claude-plugin/marketplace.json`
-- `claude-code-plugin/.claude-plugin/plugin.json`
+- `coding-agent-plugins/claude-code/.claude-plugin/plugin.json`
 
 Then tag and push as usual.
 

@@ -13,7 +13,7 @@
         "name": "Filip Procházka",
         "url": "https://github.com/fprochazka"
       },
-      "source": "./claude-code-plugin",
+      "source": "./coding-agent-plugins/claude-code",
       "homepage": "https://github.com/fprochazka/slackcli"
     }
   ]
