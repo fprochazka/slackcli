@@ -318,6 +318,8 @@ def list_messages(
     direction flag.
 
     Examples:
+
+    \b
         slack messages list '#general'                        # last 25
         slack messages list '#general' --tail 5
         slack messages list '#general' --after 1234567890.123456
@@ -325,6 +327,7 @@ def list_messages(
         slack messages list '#general' --after 1234567890.123456 --head 5
         slack messages list '#general' --before 1234567890.123456 --tail 5
         slack messages list '#general' --head 100 --since 2024-01-01
+        slack messages list '#general' --head 50 --since 7d --until 3d
         slack messages list '#general' 1234567890.123456      # thread replies
     """
     # Validate reactions option
