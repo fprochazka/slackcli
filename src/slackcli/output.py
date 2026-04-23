@@ -240,7 +240,6 @@ def output_thread_text(
         replies = list(messages)
         placeholder_user = format_user_name(parent.user_name, parent.user_id)
         print(f"{parent.datetime_str}  {placeholder_user} [thread root message omitted -- use --head to see it]")
-        print()
     elif messages:
         parent = messages[0]
         replies = list(messages[1:])
