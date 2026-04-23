@@ -502,8 +502,16 @@ def list_messages(
         return
 
     if not output_json_flag:
-        shown = len(fetched_messages) + (1 if thread_parent_omitted else 0)
-        console.print(f"[dim]Found {shown} messages[/dim]\n")
+        if thread_ts:
+            # In thread mode, count only replies — the parent (or its
+            # placeholder when omitted) is not a reply.
+            reply_count = len(fetched_messages) - (0 if thread_parent_omitted else 1)
+            if reply_count < 0:
+                reply_count = 0
+            console.print(f"[dim]Found {reply_count} replies[/dim]\n")
+        else:
+            shown = len(fetched_messages)
+            console.print(f"[dim]Found {shown} messages[/dim]\n")
 
     # Fetch thread replies if --with-threads is enabled and not already viewing a thread
     if with_threads and thread_ts is None:
