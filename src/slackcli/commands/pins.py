@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -56,7 +56,7 @@ def _format_pinned_item(
     if msg_ts:
         try:
             ts_float = float(msg_ts)
-            dt = datetime.fromtimestamp(ts_float, tz=timezone.utc)
+            dt = datetime.fromtimestamp(ts_float, tz=UTC)
             datetime_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, OSError):
             datetime_str = msg_ts
@@ -170,7 +170,7 @@ def list_pins(
                     pinned_at = ""
                     if pin["pinned_at"]:
                         try:
-                            dt = datetime.fromtimestamp(pin["pinned_at"], tz=timezone.utc)
+                            dt = datetime.fromtimestamp(pin["pinned_at"], tz=UTC)
                             pinned_at = f" on {dt.strftime('%Y-%m-%d')}"
                         except (ValueError, OSError):
                             pass

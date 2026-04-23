@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -169,7 +169,7 @@ def output_search_messages_text(
 
         # Parse timestamp
         try:
-            dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+            dt = datetime.fromtimestamp(float(ts), tz=UTC)
             date_str = dt.strftime("%Y-%m-%d %H:%M")
         except (ValueError, OSError):
             date_str = ts
@@ -222,7 +222,7 @@ def output_search_files_text(
 
         # Format date
         try:
-            dt = datetime.fromtimestamp(created, tz=timezone.utc)
+            dt = datetime.fromtimestamp(created, tz=UTC)
             date_str = dt.strftime("%Y-%m-%d %H:%M")
         except (ValueError, OSError):
             date_str = str(created)

@@ -7,7 +7,7 @@ for handling relative times, date specifications, and future scheduling.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def parse_relative_time(spec: str, base: datetime | None = None) -> timedelta | None:
@@ -92,7 +92,7 @@ def parse_time_spec(spec: str) -> datetime:
         ValueError: If spec cannot be parsed.
     """
     spec_lower = spec.strip().lower()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # Keywords
     if spec_lower == "today":
@@ -112,7 +112,7 @@ def parse_time_spec(spec: str) -> datetime:
     if dt is not None:
         # If no timezone, assume UTC
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
 
     raise ValueError(f"Cannot parse time specification: {spec}")
@@ -136,7 +136,7 @@ def parse_date_spec(spec: str) -> str:
         ValueError: If spec cannot be parsed.
     """
     spec_lower = spec.strip().lower()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # Keywords
     if spec_lower == "today":

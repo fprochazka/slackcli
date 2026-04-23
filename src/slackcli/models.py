@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 # Type alias for message text extraction and mention resolution functions
@@ -149,7 +149,7 @@ class Message:
     def datetime(self) -> datetime | None:
         """Get the message timestamp as a datetime object."""
         try:
-            return datetime.fromtimestamp(float(self.ts), tz=timezone.utc)
+            return datetime.fromtimestamp(float(self.ts), tz=UTC)
         except (ValueError, OSError):
             return None
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -72,29 +72,29 @@ class TestParseTimeSpec:
     def test_today_keyword(self) -> None:
         """Test 'today' keyword returns start of today in UTC."""
         result = parse_time_spec("today")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         expected = now.replace(hour=0, minute=0, second=0, microsecond=0)
         assert result == expected
 
     def test_yesterday_keyword(self) -> None:
         """Test 'yesterday' keyword returns start of yesterday in UTC."""
         result = parse_time_spec("yesterday")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         expected = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         assert result == expected
 
     def test_now_keyword(self) -> None:
         """Test 'now' keyword returns current time in UTC."""
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         result = parse_time_spec("now")
-        after = datetime.now(tz=timezone.utc)
+        after = datetime.now(tz=UTC)
         assert before <= result <= after
 
     def test_relative_times(self) -> None:
         """Test relative time specifications."""
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         result = parse_time_spec("7d")
-        after = datetime.now(tz=timezone.utc)
+        after = datetime.now(tz=UTC)
 
         expected_min = before - timedelta(days=7)
         expected_max = after - timedelta(days=7)
@@ -102,9 +102,9 @@ class TestParseTimeSpec:
 
     def test_relative_hours(self) -> None:
         """Test relative hour specifications."""
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         result = parse_time_spec("2h")
-        after = datetime.now(tz=timezone.utc)
+        after = datetime.now(tz=UTC)
 
         expected_min = before - timedelta(hours=2)
         expected_max = after - timedelta(hours=2)
@@ -113,19 +113,19 @@ class TestParseTimeSpec:
     def test_iso_date(self) -> None:
         """Test ISO date parsing."""
         result = parse_time_spec("2024-01-15")
-        expected = datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
+        expected = datetime(2024, 1, 15, 0, 0, 0, tzinfo=UTC)
         assert result == expected
 
     def test_iso_datetime_with_t(self) -> None:
         """Test ISO datetime parsing with T separator."""
         result = parse_time_spec("2024-01-15T10:30:00")
-        expected = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        expected = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         assert result == expected
 
     def test_iso_datetime_with_space(self) -> None:
         """Test ISO datetime parsing with space separator."""
         result = parse_time_spec("2024-01-15 10:30:00")
-        expected = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        expected = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         assert result == expected
 
     def test_case_insensitive_keywords(self) -> None:
@@ -154,27 +154,27 @@ class TestParseDateSpec:
     def test_today_keyword(self) -> None:
         """Test 'today' keyword returns today's date."""
         result = parse_date_spec("today")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         assert result == now.strftime("%Y-%m-%d")
 
     def test_yesterday_keyword(self) -> None:
         """Test 'yesterday' keyword returns yesterday's date."""
         result = parse_date_spec("yesterday")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         expected = (now - timedelta(days=1)).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_relative_days(self) -> None:
         """Test relative day specifications."""
         result = parse_date_spec("7d")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         expected = (now - timedelta(days=7)).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_relative_30_days(self) -> None:
         """Test 30 days ago."""
         result = parse_date_spec("30d")
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         expected = (now - timedelta(days=30)).strftime("%Y-%m-%d")
         assert result == expected
 
