@@ -549,13 +549,17 @@ def list_messages(
     # Convert to model
     messages_output = convert_messages_to_model(fetched_messages, users, channels, channel_id, channel_name)
 
-    # Populate pagination envelope.
+    # Populate pagination envelope. Only expose cursors on the side(s) where
+    # more messages are actually available — otherwise agents branching on
+    # cursor presence get misled by stale boundary timestamps.
     messages_output.has_more_before = has_more_before
     messages_output.has_more_after = has_more_after
     rendered = messages_output.messages
     if rendered:
-        messages_output.next_before_ts = rendered[0].ts
-        messages_output.next_after_ts = rendered[-1].ts
+        if has_more_before:
+            messages_output.next_before_ts = rendered[0].ts
+        if has_more_after:
+            messages_output.next_after_ts = rendered[-1].ts
 
     if thread_parent_omitted and thread_parent_raw is not None:
         omitted_parent_msg = Message.from_api(
