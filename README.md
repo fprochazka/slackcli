@@ -456,12 +456,32 @@ src/slackcli/
 
 ## Releasing
 
-Before tagging a release that updates the Claude Code plugin, bump the version in **both** plugin manifest files so they stay in lockstep:
+1. Bump the version in **both** plugin manifest files so they stay in lockstep:
+   - `.claude-plugin/marketplace.json`
+   - `coding-agent-plugins/claude-code/.claude-plugin/plugin.json`
 
-- `.claude-plugin/marketplace.json`
-- `coding-agent-plugins/claude-code/.claude-plugin/plugin.json`
+2. Commit and push the bump.
 
-Then tag and push as usual.
+3. **Wait for CI to pass on `master`** — never tag a red build.
+
+4. Review changes since the last release and draft release notes:
+
+   ```bash
+   git log $(git describe --tags --abbrev=0)..HEAD --oneline
+   ```
+
+5. Tag and push:
+
+   ```bash
+   git tag -a v<version> -F /tmp/release-notes.md
+   git push origin v<version>
+   ```
+
+6. Create the GitHub release:
+
+   ```bash
+   gh release create v<version> -F /tmp/release-notes.md --title v<version>
+   ```
 
 ## License
 
