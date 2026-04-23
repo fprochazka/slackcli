@@ -250,6 +250,12 @@ class MessagesOutput:
     channel_id: str
     channel_name: str
     messages: list[Message]
+    has_more_before: bool = False
+    has_more_after: bool = False
+    next_before_ts: str | None = None
+    next_after_ts: str | None = None
+    thread_parent_omitted: bool = False
+    omitted_parent: Message | None = None
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -260,11 +266,20 @@ class MessagesOutput:
         Returns:
             Dictionary suitable for JSON serialization.
         """
-        return {
+        result: dict[str, Any] = {
             "channel": self.channel_id,
             "channel_name": self.channel_name,
             "messages": [m.to_dict(include_replies=include_replies) for m in self.messages],
+            "has_more_before": self.has_more_before,
+            "has_more_after": self.has_more_after,
+            "next_before_ts": self.next_before_ts,
+            "next_after_ts": self.next_after_ts,
         }
+        if self.thread_parent_omitted:
+            result["thread_parent_omitted"] = True
+            if self.omitted_parent is not None:
+                result["omitted_parent"] = self.omitted_parent.to_dict(include_replies=False)
+        return result
 
 
 @dataclass

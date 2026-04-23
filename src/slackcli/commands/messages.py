@@ -197,10 +197,9 @@ def convert_messages_to_model(
     Returns:
         MessagesOutput with converted messages.
     """
-    # Messages come in reverse chronological order, reverse for display
+    # Client now returns messages in ascending order.
     messages = [
-        Message.from_api(msg, users, channels, get_message_text, resolve_slack_mentions)
-        for msg in reversed(raw_messages)
+        Message.from_api(msg, users, channels, get_message_text, resolve_slack_mentions) for msg in raw_messages
     ]
 
     return MessagesOutput(
@@ -259,14 +258,34 @@ def list_messages(
             help="Shortcut for last 30 days.",
         ),
     ] = False,
-    limit: Annotated[
-        int,
+    head: Annotated[
+        int | None,
         typer.Option(
-            "--limit",
-            "-n",
-            help="Maximum number of messages to fetch.",
+            "--head",
+            help="Return the first N messages in the window (walk forward).",
         ),
-    ] = 100,
+    ] = None,
+    tail: Annotated[
+        int | None,
+        typer.Option(
+            "--tail",
+            help="Return the last N messages in the window (walk backward). Default: 25.",
+        ),
+    ] = None,
+    after: Annotated[
+        str | None,
+        typer.Option(
+            "--after",
+            help="Return up to 25 messages strictly after this ts (forward cursor).",
+        ),
+    ] = None,
+    before: Annotated[
+        str | None,
+        typer.Option(
+            "--before",
+            help="Return up to 25 messages strictly before this ts (backward cursor).",
+        ),
+    ] = None,
     reactions: Annotated[
         str,
         typer.Option(
@@ -291,16 +310,58 @@ def list_messages(
 ) -> None:
     """List messages in a channel or thread.
 
+    Exactly one of --head / --tail / --after / --before may be set. If none
+    are specified, --tail 25 is used. Display order is always ascending
+    (oldest on top, newest on bottom) regardless of the direction flag.
+
     Examples:
-        slack messages list '#general'
-        slack messages list '#general' --since=7d
-        slack messages list '#general' --today
-        slack messages list '#general' 1234567890.123456  # thread replies
-        slack messages list C0123456789 --reactions=counts
+        slack messages list '#general'                        # last 25
+        slack messages list '#general' --tail 5
+        slack messages list '#general' --after 1234567890.123456
+        slack messages list '#general' --before 1234567890.123456
+        slack messages list '#general' --head 100 --since 2024-01-01
+        slack messages list '#general' 1234567890.123456      # thread replies
     """
     # Validate reactions option
     if reactions not in ("off", "counts", "names"):
         error_console.print(f"[red]Invalid --reactions value: {reactions}. Use 'off', 'counts', or 'names'.[/red]")
+        raise typer.Exit(1)
+
+    # Validate mutually exclusive direction flags.
+    direction_flags = {
+        "--head": head is not None,
+        "--tail": tail is not None,
+        "--after": after is not None,
+        "--before": before is not None,
+    }
+    set_flags = [name for name, is_set in direction_flags.items() if is_set]
+    if len(set_flags) > 1:
+        error_console.print(
+            f"[red]--head / --tail / --after / --before are mutually exclusive. Got: {', '.join(set_flags)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Resolve (direction, count, after_ts, before_ts).
+    DEFAULT_CURSOR_PAGE = 25
+    direction: str
+    count: int
+    after_ts: str | None = None
+    before_ts: str | None = None
+    if head is not None:
+        direction, count = "head", head
+    elif tail is not None:
+        direction, count = "tail", tail
+    elif after is not None:
+        direction, count = "head", DEFAULT_CURSOR_PAGE
+        after_ts = after
+    elif before is not None:
+        direction, count = "tail", DEFAULT_CURSOR_PAGE
+        before_ts = before
+    else:
+        direction, count = "tail", DEFAULT_CURSOR_PAGE
+
+    if count <= 0:
+        error_console.print("[red]Count must be a positive integer.[/red]")
         raise typer.Exit(1)
 
     # Handle time shortcuts
@@ -314,10 +375,6 @@ def list_messages(
     # Parse time filters
     oldest: datetime | None = None
     latest: datetime | None = None
-
-    # For channel messages (no thread_ts), default to last 30 days
-    if thread_ts is None and since is None:
-        since = "30d"
 
     if since:
         try:
@@ -342,11 +399,33 @@ def list_messages(
     logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
 
     # Fetch messages
+    has_more_before = False
+    has_more_after = False
+    thread_total_count = 0
+    thread_parent_raw: dict[str, Any] | None = None
     try:
         if thread_ts:
             if not output_json_flag:
                 console.print(f"[dim]Fetching thread replies for {thread_ts}...[/dim]")
-            fetched_messages = slack.get_thread_replies(channel_id, thread_ts, limit)
+            # Thread mode: parent counts toward the requested count. Ask the
+            # client for count-1 replies in head mode so parent + replies
+            # total to count. In tail mode, fetch count replies — parent
+            # itself may be replaced by a placeholder if the thread
+            # overflows.
+            reply_count_request = count - 1 if direction == "head" else count
+            if reply_count_request < 1:
+                reply_count_request = 1
+            fetched_messages, has_more_before, has_more_after = slack.get_thread_replies(
+                channel_id,
+                thread_ts,
+                direction=direction,  # type: ignore[arg-type]
+                count=reply_count_request,
+                after_ts=after_ts,
+                before_ts=before_ts,
+            )
+            if fetched_messages:
+                thread_parent_raw = fetched_messages[0]
+                thread_total_count = 1 + (thread_parent_raw.get("reply_count", 0) or 0)
         else:
             time_range = ""
             if oldest:
@@ -355,7 +434,15 @@ def list_messages(
                 time_range += f" to {latest.strftime('%Y-%m-%d %H:%M')}"
             if not output_json_flag:
                 console.print(f"[dim]Fetching messages{time_range}...[/dim]")
-            fetched_messages = slack.get_messages(channel_id, oldest, latest, limit)
+            fetched_messages, has_more_before, has_more_after = slack.get_messages(
+                channel_id,
+                direction=direction,  # type: ignore[arg-type]
+                count=count,
+                oldest=oldest,
+                latest=latest,
+                after_ts=after_ts,
+                before_ts=before_ts,
+            )
     except SlackApiError as e:
         error_msg, hint = format_error_with_hint(e)
         error_console.print(f"[red]{error_msg}[/red]")
@@ -363,12 +450,26 @@ def list_messages(
             error_console.print(f"[dim]Hint: {hint}[/dim]")
         raise typer.Exit(1) from None
 
-    if not fetched_messages:
+    # Thread placeholder logic: in --tail mode with overflow, drop the
+    # parent content and present a placeholder instead. ``thread_total_count``
+    # accounts for parent + replies from Slack's reply_count field.
+    thread_parent_omitted = False
+    if thread_ts and fetched_messages and direction == "tail" and thread_total_count > count:
+        # Drop parent from the rendered slice; only replies are shown plus a
+        # placeholder line printed by the renderer.
+        fetched_messages = fetched_messages[1:]
+        thread_parent_omitted = True
+        # Older replies or the parent itself are above the window.
+        has_more_before = True
+
+    if not fetched_messages and not thread_parent_omitted:
         if output_json_flag:
             output = MessagesOutput(
                 channel_id=channel_id,
                 channel_name=channel_name,
                 messages=[],
+                has_more_before=has_more_before,
+                has_more_after=has_more_after,
             )
             output_messages_json(output, with_threads)
         else:
@@ -376,11 +477,11 @@ def list_messages(
         return
 
     if not output_json_flag:
-        console.print(f"[dim]Found {len(fetched_messages)} messages[/dim]\n")
+        shown = len(fetched_messages) + (1 if thread_parent_omitted else 0)
+        console.print(f"[dim]Found {shown} messages[/dim]\n")
 
     # Fetch thread replies if --with-threads is enabled and not already viewing a thread
     if with_threads and thread_ts is None:
-        # Count messages with threads
         messages_with_threads = [msg for msg in fetched_messages if msg.get("reply_count", 0) > 0]
         if messages_with_threads and not output_json_flag:
             console.print(f"[dim]Fetching {len(messages_with_threads)} threads...[/dim]")
@@ -390,17 +491,20 @@ def list_messages(
             if reply_count > 0:
                 msg_ts = msg.get("ts", "")
                 try:
-                    thread_messages = slack.get_thread_replies(channel_id, msg_ts, reply_count + 1)
-                    # Skip the first message (parent) to avoid duplication
+                    thread_messages = slack.fetch_full_thread(channel_id, msg_ts)
                     if thread_messages:
-                        msg["replies"] = thread_messages[1:]
+                        # Skip the parent to avoid duplication.
+                        msg["replies"] = [m for m in thread_messages if m.get("ts") != msg_ts]
                 except SlackApiError as e:
                     logger.debug(f"Failed to fetch thread {msg_ts}: {e}")
 
     # Collect user IDs for resolution
     include_reaction_users = reactions == "names" or output_json_flag
+    collect_source = list(fetched_messages)
+    if thread_parent_omitted and thread_parent_raw is not None:
+        collect_source = [thread_parent_raw, *collect_source]
     user_ids = collect_user_ids_from_messages(
-        fetched_messages,
+        collect_source,
         include_reaction_users=include_reaction_users,
         with_threads=with_threads,
     )
@@ -414,12 +518,26 @@ def list_messages(
     # Convert to model
     messages_output = convert_messages_to_model(fetched_messages, users, channels, channel_id, channel_name)
 
+    # Populate pagination envelope.
+    messages_output.has_more_before = has_more_before
+    messages_output.has_more_after = has_more_after
+    rendered = messages_output.messages
+    if rendered:
+        messages_output.next_before_ts = rendered[0].ts
+        messages_output.next_after_ts = rendered[-1].ts
+
+    if thread_parent_omitted and thread_parent_raw is not None:
+        omitted_parent_msg = Message.from_api(
+            thread_parent_raw, users, channels, get_message_text, resolve_slack_mentions
+        )
+        messages_output.thread_parent_omitted = True
+        messages_output.omitted_parent = omitted_parent_msg
+
     # Output messages
     if output_json_flag:
         output_messages_json(messages_output, with_threads)
     elif thread_ts:
-        # For thread view, pass the raw Message list to thread display
-        output_thread_text(messages_output.messages, reactions)
+        output_thread_text(messages_output, reactions)
     else:
         output_messages_text(messages_output, reactions, with_threads)
 

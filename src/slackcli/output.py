@@ -115,6 +115,18 @@ def output_messages_json(output: MessagesOutput, with_threads: bool = False) -> 
     output_json(output.to_dict(include_replies=with_threads))
 
 
+def _format_has_more_footer(output: MessagesOutput) -> str | None:
+    """Build a one-line footer describing available pagination cursors."""
+    parts = []
+    if output.has_more_before and output.next_before_ts:
+        parts.append(f"older -- --before {output.next_before_ts}")
+    if output.has_more_after and output.next_after_ts:
+        parts.append(f"newer -- --after {output.next_after_ts}")
+    if not parts:
+        return None
+    return f"[... {' | '.join(parts)}]"
+
+
 def output_messages_text(
     output: MessagesOutput,
     reactions_mode: str = "off",
@@ -129,6 +141,10 @@ def output_messages_text(
     """
     for msg in output.messages:
         _output_message_text(msg, reactions_mode, with_threads)
+
+    footer = _format_has_more_footer(output)
+    if footer:
+        print(footer)
 
 
 def _output_message_text(
@@ -191,36 +207,45 @@ def _output_message_text(
 
 
 def output_thread_text(
-    messages: list[Message],
+    output: MessagesOutput,
     reactions_mode: str = "off",
 ) -> None:
     """Output thread messages as formatted text.
 
     Args:
-        messages: List of messages (parent first, then replies).
+        output: The MessagesOutput container. When ``thread_parent_omitted``
+            is set, the parent content is replaced with a placeholder line
+            and ``output.messages`` is expected to hold only replies.
         reactions_mode: How to display reactions.
     """
-    if not messages:
-        return
+    messages = output.messages
+    parent: Message | None = None
+    replies: list[Message]
 
-    # First message is the parent
-    parent = messages[0]
-    replies = messages[1:]
+    if output.thread_parent_omitted and output.omitted_parent is not None:
+        parent = output.omitted_parent
+        replies = list(messages)
+        placeholder_user = format_user_name(parent.user_name, parent.user_id)
+        print(f"{parent.datetime_str}  {placeholder_user} [thread root message omitted -- use --head to see it]")
+        print()
+    elif messages:
+        parent = messages[0]
+        replies = list(messages[1:])
+        user_name = format_user_name(parent.user_name, parent.user_id)
+        print(f"{parent.datetime_str}  {user_name} [parent]")
+        print(format_message_text(parent.text))
 
-    # Display parent
-    user_name = format_user_name(parent.user_name, parent.user_id)
-    print(f"{parent.datetime_str}  {user_name} [parent]")
-    print(format_message_text(parent.text))
+        files_str = format_files(parent.files, indent="  ")
+        if files_str:
+            print(files_str)
 
-    files_str = format_files(parent.files, indent="  ")
-    if files_str:
-        print(files_str)
+        reactions_str = format_reactions(parent.reactions, reactions_mode)
+        if reactions_str:
+            print(f"  {reactions_str}")
 
-    reactions_str = format_reactions(parent.reactions, reactions_mode)
-    if reactions_str:
-        print(f"  {reactions_str}")
-
-    print()  # Blank line after parent
+        print()  # Blank line after parent
+    else:
+        replies = []
 
     # Display replies (indented)
     for reply in replies:
@@ -237,6 +262,10 @@ def output_thread_text(
             print(f"    {reactions_str}")
 
         print()  # Blank line between replies
+
+    footer = _format_has_more_footer(output)
+    if footer:
+        print(footer)
 
 
 def output_resolved_message_json(resolved: ResolvedMessage) -> None:

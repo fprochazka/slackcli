@@ -113,16 +113,23 @@ slack conversations list --refresh
 ### Messages
 
 ```bash
-# List messages in a channel (default: last 30 days)
+# List messages in a channel (default: last 25 messages, i.e. --tail 25)
 slack messages list '#general'
 slack messages list C0123456789
 
-# Time filters
+# Direction flags (mutually exclusive)
+slack messages list '#general' --tail 5                    # last 5 messages
+slack messages list '#general' --head 5                    # first 5 in window
+slack messages list '#general' --after 1234567890.123456   # next 25 after cursor
+slack messages list '#general' --before 1234567890.123456  # previous 25 before cursor
+
+# Compose with time windows
 slack messages list '#general' --today
 slack messages list '#general' --last-7d
 slack messages list '#general' --last-30d
 slack messages list '#general' --since 2024-01-15
 slack messages list '#general' --since 7d --until 3d
+slack messages list '#general' --head 100 --since 2024-01-01 --until 2024-02-01
 
 # Include thread replies inline
 slack messages list '#general' --with-threads
@@ -133,9 +140,22 @@ slack messages list '#general' --reactions=names    # :+1: alice, bob
 
 # View a specific thread
 slack messages list '#general' 1234567890.123456
+slack messages list '#general' 1234567890.123456 --tail 10  # last 10 replies;
+                                                            # if the thread
+                                                            # overflows, the
+                                                            # root is shown as
+                                                            # a placeholder
+                                                            # line — use --head
+                                                            # to see it.
 
 # JSON output
 slack messages list '#general' --json
+
+# Pagination output: when more messages exist on either side of the returned
+# slice, the text output prints a trailing footer such as
+#     [... older -- --before 1234.5678 | newer -- --after 2345.6789]
+# and the JSON envelope includes `has_more_before`, `has_more_after`,
+# `next_before_ts`, and `next_after_ts`. Use these cursors to page further.
 
 # Send a message to a channel
 slack messages send '#general' "Hello world"

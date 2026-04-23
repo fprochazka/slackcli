@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -159,35 +159,72 @@ class SlackCli:
     def get_messages(
         self,
         channel_id: str,
+        *,
+        direction: Literal["head", "tail"],
+        count: int,
         oldest: datetime | None = None,
         latest: datetime | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """Fetch messages from a channel.
+        after_ts: str | None = None,
+        before_ts: str | None = None,
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
+        """Fetch messages from a channel with peek-ahead has_more detection.
 
         Args:
             channel_id: The channel ID.
-            oldest: Oldest message time (inclusive).
-            latest: Latest message time (inclusive).
-            limit: Maximum number of messages to fetch.
+            direction: "head" walks forward from the lower bound, "tail" walks
+                backward from the upper bound.
+            count: Maximum number of messages to return (excluding peek-ahead).
+            oldest: Lower bound window (inclusive as Slack interprets it).
+            latest: Upper bound window.
+            after_ts: Exclusive lower cursor. Combined with ``oldest`` by
+                picking whichever is newer.
+            before_ts: Exclusive upper cursor. Combined with ``latest`` by
+                picking whichever is older.
 
         Returns:
-            List of message data from API.
+            Tuple ``(messages_asc, has_more_before, has_more_after)``.
+            ``messages_asc`` is sorted ascending by ``ts``.
         """
+
+        def _ts_to_float(value: str) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+
+        # Translate cursor + window to Slack API oldest/latest.
+        # "oldest" on the API is a lower bound; "latest" is an upper bound.
+        oldest_values: list[float] = []
+        if oldest is not None:
+            oldest_values.append(oldest.timestamp())
+        if after_ts is not None:
+            oldest_values.append(_ts_to_float(after_ts))
+        api_oldest = max(oldest_values) if oldest_values else None
+
+        latest_values: list[float] = []
+        if latest is not None:
+            latest_values.append(latest.timestamp())
+        if before_ts is not None:
+            latest_values.append(_ts_to_float(before_ts))
+        api_latest = min(latest_values) if latest_values else None
+
+        peek_target = count + 1  # peek ahead by one
         messages: list[dict[str, Any]] = []
         cursor: str | None = None
+        api_has_more_after_fetch = False
 
-        kwargs: dict[str, Any] = {
+        base_kwargs: dict[str, Any] = {
             "channel": channel_id,
-            "limit": min(limit, 1000),  # API max is 1000
+            "inclusive": False,
         }
+        if api_oldest is not None:
+            base_kwargs["oldest"] = f"{api_oldest:.6f}"
+        if api_latest is not None:
+            base_kwargs["latest"] = f"{api_latest:.6f}"
 
-        if oldest:
-            kwargs["oldest"] = f"{oldest.timestamp():.6f}"
-        if latest:
-            kwargs["latest"] = f"{latest.timestamp():.6f}"
-
-        while len(messages) < limit:
+        while len(messages) < peek_target:
+            kwargs = dict(base_kwargs)
+            kwargs["limit"] = min(peek_target - len(messages), 1000)
             if cursor:
                 kwargs["cursor"] = cursor
 
@@ -198,8 +235,8 @@ class SlackCli:
             batch = response.get("messages", [])
             messages.extend(batch)
 
-            # Check for more pages
-            if not response.get("has_more", False):
+            api_has_more_after_fetch = bool(response.get("has_more", False))
+            if not api_has_more_after_fetch:
                 break
 
             response_metadata = response.get("response_metadata", {})
@@ -207,37 +244,81 @@ class SlackCli:
             if not cursor:
                 break
 
-            # Adjust limit for next request
-            remaining = limit - len(messages)
-            kwargs["limit"] = min(remaining, 1000)
+        # Sort ascending by ts so direction-specific trimming is unambiguous.
+        messages.sort(key=lambda m: _ts_to_float(m.get("ts", "0")))
 
-        # Trim to exact limit
-        return messages[:limit]
+        # Decide which peek-ahead side applies. If we got more than `count`,
+        # there's at least one extra item. Drop it from the slice we return
+        # but remember that there are more on that side.
+        overflow = len(messages) > count
+        has_more_before = False
+        has_more_after = False
+
+        if direction == "tail":
+            # We keep the newest `count` messages; older side may have more.
+            if overflow:
+                messages = messages[-count:]
+                has_more_before = True
+            # If the API said has_more while we were still fetching toward
+            # the lower bound and we haven't filled the slice, we also
+            # trust the API signal.
+            elif api_has_more_after_fetch:
+                has_more_before = True
+        else:  # head
+            # Keep the oldest `count` messages; newer side may have more.
+            if overflow:
+                messages = messages[:count]
+                has_more_after = True
+            elif api_has_more_after_fetch:
+                has_more_after = True
+
+        return messages, has_more_before, has_more_after
 
     def get_thread_replies(
         self,
         channel_id: str,
         thread_ts: str,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """Fetch thread replies.
+        *,
+        direction: Literal["head", "tail"],
+        count: int,
+        after_ts: str | None = None,
+        before_ts: str | None = None,
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
+        """Fetch thread replies with peek-ahead has_more detection.
+
+        The Slack ``conversations.replies`` API returns the parent first,
+        followed by replies in chronological order. Since it has no
+        direction control the way ``conversations.history`` does, we fetch
+        the full reply list and apply direction / count / cursors in Python.
 
         Args:
             channel_id: The channel ID.
-            thread_ts: The thread timestamp.
-            limit: Maximum number of messages to fetch.
+            thread_ts: The thread parent timestamp.
+            direction: "head" (first replies) or "tail" (last replies).
+            count: Maximum number of replies to return.
+            after_ts: Exclusive lower cursor applied to replies.
+            before_ts: Exclusive upper cursor applied to replies.
 
         Returns:
-            List of message data from API (parent first, then replies).
+            Tuple ``(messages_asc, has_more_before, has_more_after)`` where
+            the first element of ``messages_asc`` is always the parent
+            followed by the selected slice of replies in ascending ts order.
         """
-        messages: list[dict[str, Any]] = []
+
+        def _ts_to_float(value: str) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+
+        all_messages: list[dict[str, Any]] = []
         cursor: str | None = None
 
-        while len(messages) < limit:
+        while True:
             kwargs: dict[str, Any] = {
                 "channel": channel_id,
                 "ts": thread_ts,
-                "limit": min(limit - len(messages), 1000),
+                "limit": 1000,
             }
             if cursor:
                 kwargs["cursor"] = cursor
@@ -247,9 +328,8 @@ class SlackCli:
             self._check_response(response, "Fetch thread replies")
 
             batch = response.get("messages", [])
-            messages.extend(batch)
+            all_messages.extend(batch)
 
-            # Check for more pages
             if not response.get("has_more", False):
                 break
 
@@ -258,7 +338,97 @@ class SlackCli:
             if not cursor:
                 break
 
-        return messages[:limit]
+        if not all_messages:
+            return [], False, False
+
+        # Parent is the first message whose ts matches thread_ts.
+        parent: dict[str, Any] | None = None
+        replies: list[dict[str, Any]] = []
+        for msg in all_messages:
+            if parent is None and msg.get("ts") == thread_ts:
+                parent = msg
+            else:
+                replies.append(msg)
+        if parent is None:
+            # Fall back: treat the first message as parent.
+            parent = all_messages[0]
+            replies = all_messages[1:]
+
+        replies.sort(key=lambda m: _ts_to_float(m.get("ts", "0")))
+
+        # Apply cursors to the reply list exclusively.
+        after_f = _ts_to_float(after_ts) if after_ts else None
+        before_f = _ts_to_float(before_ts) if before_ts else None
+
+        filtered: list[dict[str, Any]] = []
+        trimmed_before_cursor = False
+        trimmed_after_cursor = False
+        for reply in replies:
+            ts_f = _ts_to_float(reply.get("ts", "0"))
+            if after_f is not None and ts_f <= after_f:
+                trimmed_before_cursor = True
+                continue
+            if before_f is not None and ts_f >= before_f:
+                trimmed_after_cursor = True
+                continue
+            filtered.append(reply)
+
+        has_more_before = trimmed_before_cursor
+        has_more_after = trimmed_after_cursor
+
+        if direction == "tail":
+            if len(filtered) > count:
+                filtered = filtered[-count:]
+                has_more_before = True
+        else:  # head
+            if len(filtered) > count:
+                filtered = filtered[:count]
+                has_more_after = True
+
+        return [parent, *filtered], has_more_before, has_more_after
+
+    def fetch_full_thread(
+        self,
+        channel_id: str,
+        thread_ts: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch the full thread (parent + all replies) in ascending order.
+
+        Used by ``--with-threads`` where the page-size flags constrain the
+        top-level parents but each parent is expanded in full.
+        """
+
+        def _ts_to_float(value: str) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+
+        all_messages: list[dict[str, Any]] = []
+        cursor: str | None = None
+
+        while True:
+            kwargs: dict[str, Any] = {
+                "channel": channel_id,
+                "ts": thread_ts,
+                "limit": 1000,
+            }
+            if cursor:
+                kwargs["cursor"] = cursor
+
+            response = self.client.conversations_replies(**kwargs)
+            self._check_response(response, "Fetch thread replies")
+
+            all_messages.extend(response.get("messages", []))
+
+            if not response.get("has_more", False):
+                break
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+
+        all_messages.sort(key=lambda m: _ts_to_float(m.get("ts", "0")))
+        return all_messages
 
     def get_message(
         self,
