@@ -115,16 +115,29 @@ def output_messages_json(output: MessagesOutput, with_threads: bool = False) -> 
     output_json(output.to_dict(include_replies=with_threads))
 
 
-def _format_has_more_footer(output: MessagesOutput) -> str | None:
-    """Build a one-line footer describing available pagination cursors."""
+def _format_has_more_footer(output: MessagesOutput, is_thread: bool = False) -> str | None:
+    """Build a one-line footer describing available pagination cursors.
+
+    Args:
+        output: The MessagesOutput carrying pagination state.
+        is_thread: When True, wording reflects paging within a thread's
+            replies; otherwise wording reflects paging through channel
+            messages.
+    """
+    if is_thread:
+        before_label = "earlier replies"
+        after_label = "later replies"
+    else:
+        before_label = "older"
+        after_label = "newer"
     parts = []
     if output.has_more_before and output.next_before_ts:
-        parts.append(f"older -- --before {output.next_before_ts}")
+        parts.append(f"{before_label}: --before {output.next_before_ts}")
     if output.has_more_after and output.next_after_ts:
-        parts.append(f"newer -- --after {output.next_after_ts}")
+        parts.append(f"{after_label}: --after {output.next_after_ts}")
     if not parts:
         return None
-    return f"[... {' | '.join(parts)}]"
+    return f"[{' | '.join(parts)}]"
 
 
 def output_messages_text(
@@ -142,7 +155,7 @@ def output_messages_text(
     for msg in output.messages:
         _output_message_text(msg, reactions_mode, with_threads)
 
-    footer = _format_has_more_footer(output)
+    footer = _format_has_more_footer(output, is_thread=False)
     if footer:
         print(footer)
 
@@ -263,7 +276,7 @@ def output_thread_text(
 
         print()  # Blank line between replies
 
-    footer = _format_has_more_footer(output)
+    footer = _format_has_more_footer(output, is_thread=True)
     if footer:
         print(footer)
 
