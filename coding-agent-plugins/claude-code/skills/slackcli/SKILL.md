@@ -121,8 +121,11 @@ slice.
 **Text mode** — a trailing footer is printed when there is more to fetch, e.g.:
 
 ```
-[... older -- --before 1234.5678 | newer -- --after 2345.6789]
+[older: --before 1234.5678 | newer: --after 2345.6789]
 ```
+
+In thread view the labels change to `earlier replies` / `later replies` so
+it's clear the cursors page within the thread.
 
 Feed either cursor back into a new call to page further:
 

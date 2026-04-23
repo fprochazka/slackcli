@@ -173,7 +173,7 @@ slack messages list '#general' --json
 
 # Pagination output: when more messages exist on either side of the returned
 # slice, the text output prints a trailing footer such as
-#     [... older -- --before 1234.5678 | newer -- --after 2345.6789]
+#     [older: --before 1234.5678 | newer: --after 2345.6789]
 # and the JSON envelope includes `has_more_before`, `has_more_after`,
 # `next_before_ts`, and `next_after_ts`. Use these cursors to page further.
 
