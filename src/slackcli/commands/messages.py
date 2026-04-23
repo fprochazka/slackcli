@@ -276,16 +276,14 @@ def list_messages(
         str | None,
         typer.Option(
             "--after",
-            help="Return messages strictly after this ts (forward cursor). "
-            "Defaults to 25; combine with --head N to override.",
+            help="Cursor for forward paging. Default 25 messages; override with --head N.",
         ),
     ] = None,
     before: Annotated[
         str | None,
         typer.Option(
             "--before",
-            help="Return messages strictly before this ts (backward cursor). "
-            "Defaults to 25; combine with --tail N to override.",
+            help="Cursor for backward paging. Default 25 messages; override with --tail N.",
         ),
     ] = None,
     reactions: Annotated[
