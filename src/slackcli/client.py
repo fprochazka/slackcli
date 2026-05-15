@@ -80,6 +80,84 @@ class SlackCli:
 
         return load_conversations_from_cache(self.org_name)
 
+    def invite_to_conversation(
+        self,
+        channel_id: str,
+        user_ids: list[str],
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Invite one or more users to a channel.
+
+        Args:
+            channel_id: The channel ID.
+            user_ids: List of user IDs to invite (1-1000).
+            force: If True, continue inviting valid users when some fail.
+
+        Returns:
+            The API response data, including the channel object and any per-user errors.
+
+        Raises:
+            SlackApiError: If the API call fails (e.g. not_in_channel, channel_not_found).
+        """
+        logger.debug(f"Inviting {len(user_ids)} user(s) to {channel_id} (force={force})")
+        response = self.client.conversations_invite(
+            channel=channel_id,
+            users=",".join(user_ids),
+            force=force,
+        )
+        self._check_response(response, "Invite to conversation")
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "errors": response.get("errors", []),
+        }
+
+    def join_conversation(self, channel_id: str) -> dict[str, Any]:
+        """Join a public channel.
+
+        Args:
+            channel_id: The channel ID.
+
+        Returns:
+            The API response data, including the channel object and any warning.
+
+        Raises:
+            SlackApiError: If the API call fails (e.g. method_not_supported_for_channel_type
+                for private channels).
+        """
+        logger.debug(f"Joining channel {channel_id}")
+        response = self.client.conversations_join(channel=channel_id)
+        self._check_response(response, "Join conversation")
+
+        return {
+            "ok": True,
+            "channel": response.get("channel"),
+            "warning": response.get("warning"),
+        }
+
+    def leave_conversation(self, channel_id: str) -> dict[str, Any]:
+        """Leave a conversation.
+
+        Args:
+            channel_id: The channel ID.
+
+        Returns:
+            The API response data.
+
+        Raises:
+            SlackApiError: If the API call fails.
+        """
+        logger.debug(f"Leaving channel {channel_id}")
+        response = self.client.conversations_leave(channel=channel_id)
+        self._check_response(response, "Leave conversation")
+
+        return {
+            "ok": True,
+            "channel": channel_id,
+            "not_in_channel": response.get("not_in_channel", False),
+        }
+
     # -------------------------------------------------------------------------
     # Users
     # -------------------------------------------------------------------------

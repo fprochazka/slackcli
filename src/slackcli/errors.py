@@ -52,6 +52,18 @@ ERROR_HINTS: dict[str, str] = {
     # User errors
     "user_not_found": "User not found.",
     "user_not_visible": "The user is not visible to you.",
+    # Conversation membership errors
+    "already_in_channel": "One or more users are already in the channel.",
+    "cant_invite_self": "You cannot invite yourself to a channel.",
+    "cant_invite": "One or more users cannot be invited to this channel.",
+    "ura_max_channels": "A guest user has reached their channel limit.",
+    "user_is_restricted": "A guest user is restricted from this conversation.",
+    "no_external_invite_permission": "You don't have permission to invite external users here.",
+    "method_not_supported_for_channel_type": (
+        "This operation is not supported for this channel type "
+        "(e.g. you cannot join private channels — ask to be invited)."
+    ),
+    "is_archived_for_channel": "The channel is archived.",
     # General errors
     "request_timeout": "The request timed out. Try again.",
     "service_unavailable": "Slack is temporarily unavailable. Try again later.",

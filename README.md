@@ -128,6 +128,28 @@ slack conversations list --non-member      # Channels you're not a member of
 slack conversations list --refresh
 ```
 
+#### Membership
+
+```bash
+# Invite one or more users to a channel
+slack conversations invite '#general' @john.doe
+slack conversations invite '#general' @john.doe @jane@example.com U0123456789
+
+# Continue inviting valid users when some IDs fail (already-in-channel, guest limits, etc.)
+slack conversations invite '#general' @john @already-member --force
+
+# JSON output (includes per-user errors[] on partial success)
+slack conversations invite '#general' @john --json
+
+# Join a public channel (private channels require an invite)
+slack conversations join '#general'
+
+# Leave a channel
+slack conversations leave '#general'
+```
+
+`invite` resolves each user reference (`@handle`, email, or `U…` ID) to a user ID locally before calling the API, so unknown users fail fast with a clear error. Up to 1000 users per call.
+
 ### Messages
 
 ```bash

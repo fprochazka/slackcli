@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Annotated
@@ -14,7 +15,7 @@ from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..models import Conversation
-from ..output import output_conversations_text
+from ..output import output_conversations_text, output_json
 
 if TYPE_CHECKING:
     from ..client import SlackCli
@@ -364,3 +365,238 @@ def list_conversations(
     users = slack.get_user_display_names(list(user_ids_to_fetch))
 
     output_conversations_text(filtered_conversations, users)
+
+
+def resolve_channel_for_membership(slack: SlackCli, channel_ref: str) -> tuple[str, str]:
+    """Resolve a channel reference for membership ops (invite/join/leave/kick).
+
+    Like resolve_channel() in messages.py, but rejects DMs and group DMs since
+    those don't support membership management.
+
+    Returns:
+        Tuple of (channel_id, channel_name).
+
+    Raises:
+        typer.Exit: If channel cannot be resolved or is a DM/MPIM.
+    """
+    conversations = slack.get_conversations_from_cache()
+    if conversations is None:
+        error_console.print("[red]Conversations cache not found. Run 'slack conversations list' first.[/red]")
+        raise typer.Exit(1)
+
+    is_raw_id = bool(re.match(r"^[CDG][A-Z0-9]+$", channel_ref))
+    channel_name = channel_ref if is_raw_id else channel_ref.lstrip("#")
+
+    match: Conversation | None = None
+    for convo in conversations:
+        if is_raw_id and convo.id == channel_ref:
+            match = convo
+            break
+        if not is_raw_id and convo.name == channel_name:
+            match = convo
+            break
+
+    if match is None:
+        if is_raw_id and channel_ref.startswith("D"):
+            error_console.print("[red]DMs do not support invite/join/leave.[/red]")
+            raise typer.Exit(1)
+        error_console.print(f"[red]Channel '{channel_ref}' not found in cache.[/red]")
+        error_console.print("[dim]Run 'slack conversations list --refresh' to update the cache.[/dim]")
+        raise typer.Exit(1)
+
+    if match.is_im or match.is_mpim:
+        error_console.print(f"[red]'{channel_ref}' is a DM/group DM; invite/join/leave are not supported.[/red]")
+        raise typer.Exit(1)
+
+    return match.id, match.name or match.id
+
+
+@app.command("invite")
+def invite_users(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    users: Annotated[
+        list[str],
+        typer.Argument(
+            help="One or more users to invite: @handle, email, or raw user ID (U...).",
+        ),
+    ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Invite valid users even if some IDs fail (skip individually instead of failing the whole call).",
+        ),
+    ] = False,
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Invite one or more users to a channel.
+
+    Examples:
+        slack conversations invite '#general' @john.doe
+        slack conversations invite '#general' @john.doe @jane@example.com U0123456789
+        slack conversations invite '#general' @john @already-member --force
+    """
+    if not users:
+        error_console.print("[red]At least one user must be specified.[/red]")
+        raise typer.Exit(1)
+    if len(users) > 1000:
+        error_console.print("[red]conversations.invite accepts at most 1000 users per call.[/red]")
+        raise typer.Exit(1)
+
+    ctx = get_context()
+    slack = ctx.get_slack_client()
+
+    channel_id, channel_name = resolve_channel_for_membership(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    # Resolve every user up-front; fail fast on unknowns rather than relying on Slack.
+    resolved_ids: list[str] = []
+    resolved_names: list[str] = []
+    for user_ref in users:
+        resolved = slack.resolve_user(user_ref)
+        if resolved is None:
+            error_console.print(f"[red]Could not resolve user '{user_ref}'.[/red]")
+            error_console.print("[dim]Hint: try @username, an email, or a raw user ID (U...).[/dim]")
+            raise typer.Exit(1)
+        user_id, username = resolved
+        resolved_ids.append(user_id)
+        resolved_names.append(username)
+        logger.debug(f"Resolved user '{user_ref}' to '{user_id}' (@{username})")
+
+    try:
+        if not output_json_flag:
+            preview = ", ".join(f"@{n}" for n in resolved_names)
+            console.print(f"[dim]Inviting {preview} to #{channel_name}...[/dim]")
+
+        result = slack.invite_to_conversation(channel_id, resolved_ids, force=force)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            invited = ", ".join(f"@{n}" for n in resolved_names)
+            console.print(f"[green]Invited {invited} to #{channel_name}.[/green]")
+            for err in result.get("errors") or []:
+                # Slack returns per-user objects like {"user": "U...", "error": "already_in_channel", "ok": false}
+                uid = err.get("user", "?")
+                code = err.get("error", "unknown")
+                console.print(f"[yellow]Skipped {uid}: {code}[/yellow]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+        raise typer.Exit(1) from None
+
+
+@app.command("join")
+def join_channel(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Join a public channel.
+
+    Note: only public channels can be joined. Private channels require an invite.
+
+    Examples:
+        slack conversations join '#general'
+        slack conversations join C0123456789
+    """
+    ctx = get_context()
+    slack = ctx.get_slack_client()
+
+    channel_id, channel_name = resolve_channel_for_membership(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Joining #{channel_name}...[/dim]")
+
+        result = slack.join_conversation(channel_id)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            console.print(f"[green]Joined #{channel_name}.[/green]")
+            warning = result.get("warning")
+            if warning:
+                console.print(f"[yellow]Warning: {warning}[/yellow]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+        raise typer.Exit(1) from None
+
+
+@app.command("leave")
+def leave_channel(
+    channel: Annotated[
+        str,
+        typer.Argument(
+            help="Channel reference (#channel-name or channel ID).",
+        ),
+    ],
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output the result as JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Leave a channel.
+
+    Examples:
+        slack conversations leave '#general'
+        slack conversations leave C0123456789
+    """
+    ctx = get_context()
+    slack = ctx.get_slack_client()
+
+    channel_id, channel_name = resolve_channel_for_membership(slack, channel)
+    logger.debug(f"Resolved channel '{channel}' to '{channel_id}'")
+
+    try:
+        if not output_json_flag:
+            console.print(f"[dim]Leaving #{channel_name}...[/dim]")
+
+        result = slack.leave_conversation(channel_id)
+
+        if output_json_flag:
+            output_json(result)
+        else:
+            if result.get("not_in_channel"):
+                console.print(f"[yellow]You were not a member of #{channel_name}.[/yellow]")
+            else:
+                console.print(f"[green]Left #{channel_name}.[/green]")
+
+    except SlackApiError as e:
+        error_msg, hint = format_error_with_hint(e)
+        error_console.print(f"[red]{error_msg}[/red]")
+        if hint:
+            error_console.print(f"[dim]Hint: {hint}[/dim]")
+        raise typer.Exit(1) from None
