@@ -1072,6 +1072,87 @@ class SlackCli:
             "file": file_info,
         }
 
+    def upload_files(
+        self,
+        file_paths: list[str],
+        channel_id: str | None = None,
+        thread_ts: str | None = None,
+        initial_comment: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload one or more files to Slack in a single message.
+
+        Uses the modern external upload flow via the SDK's files_upload_v2,
+        passing all files as a single ``file_uploads`` batch. When
+        ``initial_comment`` is provided it is attached once to the resulting
+        message rather than repeated per file, so a caption stays bound to the
+        file post instead of becoming a separate standalone message.
+
+        Args:
+            file_paths: Paths to the files to upload.
+            channel_id: Optional channel ID to share the files to.
+            thread_ts: Optional thread timestamp to share the files in.
+            initial_comment: Optional message attached to the upload.
+
+        Returns:
+            A dict with ``ok`` and a ``files`` list of uploaded file info.
+
+        Raises:
+            SlackApiError: If the API call fails.
+            FileNotFoundError: If any file doesn't exist.
+            ValueError: If any path is not a file.
+        """
+        import os
+        from pathlib import Path
+
+        file_uploads: list[dict[str, Any]] = []
+        for file_path in file_paths:
+            path = Path(file_path)
+            if not path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+            if not path.is_file():
+                raise ValueError(f"Path is not a file: {file_path}")
+
+            file_uploads.append(
+                {
+                    "file": str(path),
+                    "filename": path.name,
+                    "title": path.name,
+                }
+            )
+
+        kwargs: dict[str, Any] = {"file_uploads": file_uploads}
+
+        if channel_id:
+            kwargs["channel"] = channel_id
+
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+
+        if initial_comment:
+            kwargs["initial_comment"] = initial_comment
+
+        total_size = sum(os.path.getsize(u["file"]) for u in file_uploads)
+        logger.debug(
+            f"Uploading {len(file_uploads)} file(s) ({total_size} bytes)"
+            + (f" to {channel_id}" if channel_id else "")
+            + (f" (thread: {thread_ts})" if thread_ts else "")
+        )
+
+        response = self.client.files_upload_v2(**kwargs)
+        self._check_response(response, "Upload files")
+
+        # files_upload_v2 returns uploaded files in 'files'; older shapes use 'file'.
+        files = response.get("files") or []
+        if not files:
+            single = response.get("file")
+            if single:
+                files = [single]
+
+        return {
+            "ok": True,
+            "files": files,
+        }
+
     def download_file(
         self,
         url: str,

@@ -680,24 +680,32 @@ def send_message(
             "is_dm": is_dm,
         }
 
-        # Send message first if we have one (and we have files)
-        # If no files, just send the message normally
-        # If files but no message, the first file gets the "initial_comment" treatment
-        if message and has_files:
-            # Send message first, then upload files (files will be separate from message)
+        if has_files:
+            # Files (with or without a caption) are sent as a single upload so
+            # the message text rides along as the upload's initial_comment,
+            # producing one combined "file with caption" post instead of a
+            # standalone text message followed by a separate file message.
+            file_names = ", ".join(f.name for f in files)  # type: ignore[union-attr]
             if not output_json_flag:
                 if thread:
-                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
+                    console.print(f"[dim]Uploading {file_names} to thread {thread} in {display_name}...[/dim]")
                 else:
-                    console.print(f"[dim]Sending message to {display_name}...[/dim]")
+                    console.print(f"[dim]Uploading {file_names} to {display_name}...[/dim]")
 
-            msg_result = slack.send_message(channel_id, message, thread_ts=thread)
-            results["message"] = msg_result
+            upload_result = slack.upload_files(
+                file_paths=[str(f) for f in files],  # type: ignore[union-attr]
+                channel_id=channel_id,
+                thread_ts=thread,
+                initial_comment=message,
+            )
+            results["files"] = upload_result.get("files", [])
 
             if not output_json_flag:
-                ts = msg_result.get("ts", "unknown")
-                console.print("[green]Message sent successfully.[/green]")
-                console.print(f"[dim]ts={ts}[/dim]")
+                for file_info in results["files"]:
+                    file_id = file_info.get("id", "unknown")
+                    file_name = file_info.get("name", "unknown")
+                    console.print(f"[green]File uploaded: {file_name}[/green]")
+                    console.print(f"[dim]file_id={file_id}[/dim]")
 
         elif message:
             # Message only, no files
@@ -714,26 +722,6 @@ def send_message(
                 ts = msg_result.get("ts", "unknown")
                 console.print("[green]Message sent successfully.[/green]")
                 console.print(f"[dim]ts={ts}[/dim]")
-
-        # Upload files
-        if has_files:
-            results["files"] = []
-            for file_path in files:  # type: ignore[union-attr]
-                if not output_json_flag:
-                    console.print(f"[dim]Uploading {file_path.name}...[/dim]")
-
-                file_result = slack.upload_file(
-                    file_path=str(file_path),
-                    channel_id=channel_id,
-                    thread_ts=thread,
-                )
-                results["files"].append(file_result)
-
-                if not output_json_flag:
-                    file_info = file_result.get("file", {})
-                    file_id = file_info.get("id", "unknown")
-                    console.print(f"[green]File uploaded: {file_path.name}[/green]")
-                    console.print(f"[dim]file_id={file_id}[/dim]")
 
         if output_json_flag:
             output_json(results)
