@@ -54,6 +54,18 @@ token = "xoxp-your-user-token-here"
 token = "xoxp-another-token"
 ```
 
+### Workspaces
+
+On Slack Enterprise Grid one token serves the grid org and the workspaces inside it, and each of them has its own host name. Add the extra names under `workspaces` so a single entry answers to all of them:
+
+```toml
+[orgs.acme]
+token = "xoxp-your-user-token-here"
+workspaces = ["acme-eng"]
+```
+
+With this entry, `--org=acme`, `--org=acme-eng`, `SLACK_ORG=acme-eng`, and a URL on either `acme.enterprise.slack.com` or `acme-eng.slack.com` all select the same token and the same cache. A workspace name must not repeat an org name, and two orgs must not claim the same workspace name.
+
 ### Token Types
 
 - `xoxp-*` - User token (recommended, full visibility)

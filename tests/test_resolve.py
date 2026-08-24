@@ -156,10 +156,10 @@ class TestParseConversationUrl:
 
     def test_bare_archives_url(self) -> None:
         """Test parsing an archives URL without a message timestamp."""
-        result = parse_slack_url("https://example.slack.com/archives/C53MDUHQR")
+        result = parse_slack_url("https://example.slack.com/archives/C0123456789")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C53MDUHQR"
+        assert result.channel_id == "C0123456789"
         assert result.message_ts is None
         assert result.workspace == "example"
 
@@ -183,25 +183,25 @@ class TestParseConversationUrl:
 
     def test_legacy_messages_url(self) -> None:
         """Test parsing the legacy /messages/ conversation URL."""
-        result = parse_slack_url("https://example.slack.com/messages/C53MDUHQR")
+        result = parse_slack_url("https://example.slack.com/messages/C0123456789")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C53MDUHQR"
+        assert result.channel_id == "C0123456789"
 
     def test_trailing_slash(self) -> None:
         """Test that a trailing slash is tolerated."""
-        result = parse_slack_url("https://example.slack.com/archives/C53MDUHQR/")
+        result = parse_slack_url("https://example.slack.com/archives/C0123456789/")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C53MDUHQR"
+        assert result.channel_id == "C0123456789"
 
     def test_enterprise_grid_host(self) -> None:
         """Test an enterprise grid host with a bare conversation URL."""
-        result = parse_slack_url("https://rohlikgroup.enterprise.slack.com/archives/C53MDUHQR")
+        result = parse_slack_url("https://example.enterprise.slack.com/archives/C0123456789")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C53MDUHQR"
-        assert result.workspace == "rohlikgroup"
+        assert result.channel_id == "C0123456789"
+        assert result.workspace == "example"
 
 
 class TestParseUserUrl:

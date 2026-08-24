@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 
 from . import __version__
-from .config import get_config_path, load_config
+from .config import Config, get_config_path, load_config
 from .context import get_context
 from .logging import console, error_console, get_logger, setup_logging
 
@@ -100,6 +100,7 @@ def main(
 
     _ctx.verbose = verbose
     _ctx.org_name = org
+    _ctx.config_path = config_path
 
     # Load config if path specified or if we need it later
     if config_path:
@@ -110,20 +111,40 @@ def main(
             raise typer.Exit(1) from None
 
 
+def _describe_selection(config: Config, requested: str) -> str:
+    """Describe the requested org name and the entry it selects.
+
+    Args:
+        config: The loaded configuration.
+        requested: The name given on the command line, in the environment, or as default_org.
+
+    Returns:
+        The requested name, plus an arrow to the org key when a workspace name selects it.
+    """
+    try:
+        resolved = config.get_org(requested).name
+    except ValueError:
+        return requested
+
+    if resolved == requested:
+        return requested
+    return f"{requested} -> {resolved}"
+
+
 @app.command("config")
 def show_config() -> None:
     """Show the current configuration."""
     import json
     import os
 
-    config_path = get_config_path()
+    config_path = _ctx.config_path or get_config_path()
 
     if not config_path.exists():
         error_console.print(f"[yellow]Config file not found: {config_path}[/yellow]")
         raise typer.Exit(1)
 
     try:
-        config = load_config()
+        config = _ctx.config if _ctx.config is not None else load_config(config_path)
     except Exception as e:
         error_console.print(f"[red]Error loading config: {e}[/red]")
         raise typer.Exit(1) from None
@@ -133,6 +154,7 @@ def show_config() -> None:
         "orgs": {
             name: {
                 "token": org.token[:20] + "..." if len(org.token) > 20 else org.token,
+                **({"workspaces": org.workspaces} if org.workspaces else {}),
             }
             for name, org in config.orgs.items()
         },
@@ -148,11 +170,11 @@ def show_config() -> None:
     # Typer merges env var into the option, so if cli_org matches env_org,
     # it likely came from the environment variable
     if cli_org and env_org and cli_org == env_org:
-        console.print(f"[dim]Using org from SLACK_ORG: {cli_org}[/dim]")
+        console.print(f"[dim]Using org from SLACK_ORG: {_describe_selection(config, cli_org)}[/dim]")
     elif cli_org:
-        console.print(f"[dim]Using org from --org: {cli_org}[/dim]")
+        console.print(f"[dim]Using org from --org: {_describe_selection(config, cli_org)}[/dim]")
     elif config.default_org:
-        console.print(f"[dim]Using default org: {config.default_org}[/dim]")
+        console.print(f"[dim]Using default org: {_describe_selection(config, config.default_org)}[/dim]")
     else:
         console.print("[dim]No org selected (use --org or SLACK_ORG)[/dim]")
 

@@ -14,6 +14,7 @@ class OrgConfig:
 
     name: str
     token: str
+    workspaces: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -22,12 +23,34 @@ class Config:
 
     orgs: dict[str, OrgConfig] = field(default_factory=dict)
     default_org: str | None = None
+    # Workspace name -> org key.
+    workspace_index: dict[str, str] = field(default_factory=dict)
+
+    def describe_orgs(self) -> str:
+        """Describe the configured orgs and their workspace names.
+
+        Returns:
+            A comma separated list for error messages.
+        """
+        if not self.orgs:
+            return "(none)"
+
+        parts = []
+        for org in self.orgs.values():
+            if org.workspaces:
+                parts.append(f"{org.name} (workspaces: {', '.join(org.workspaces)})")
+            else:
+                parts.append(org.name)
+        return ", ".join(parts)
 
     def get_org(self, name: str | None = None) -> OrgConfig:
         """Get organization config by name, or default if not specified.
 
+        The name matches an org key first, then a workspace name. An org key
+        therefore never gets shadowed by a workspace name.
+
         Args:
-            name: Organization name, or None to use default.
+            name: Organization name, workspace name, or None to use default.
 
         Returns:
             The organization configuration.
@@ -46,11 +69,63 @@ class Config:
                 "No organization specified and no default configured. Use --org=<name> or set default_org in config."
             )
 
-        if name not in self.orgs:
-            available = ", ".join(self.orgs.keys()) if self.orgs else "(none)"
-            raise ValueError(f"Organization '{name}' not found. Available: {available}")
+        if name in self.orgs:
+            return self.orgs[name]
 
-        return self.orgs[name]
+        org_name = self.workspace_index.get(name)
+        if org_name is not None:
+            return self.orgs[org_name]
+
+        raise ValueError(f"Organization '{name}' not found. Available: {self.describe_orgs()}")
+
+
+def _parse_workspaces(org_name: str, org_data: dict) -> list[str]:
+    """Read the optional 'workspaces' key of one org.
+
+    Args:
+        org_name: The org key, for error messages.
+        org_data: The org table.
+
+    Returns:
+        The workspace names, empty if the key is absent.
+
+    Raises:
+        ValueError: If the value is not a list of strings.
+    """
+    workspaces = org_data.get("workspaces", [])
+    if not isinstance(workspaces, list) or not all(isinstance(item, str) for item in workspaces):
+        raise ValueError(f"Invalid 'workspaces' for org '{org_name}': expected a list of strings")
+    return workspaces
+
+
+def _build_workspace_index(orgs: dict[str, OrgConfig]) -> dict[str, str]:
+    """Map every workspace name to its org key.
+
+    Args:
+        orgs: The loaded orgs.
+
+    Returns:
+        Workspace name -> org key.
+
+    Raises:
+        ValueError: If a workspace name repeats or collides with an org key.
+    """
+    index: dict[str, str] = {}
+    for org_name, org in orgs.items():
+        for workspace in org.workspaces:
+            if workspace == org_name:
+                raise ValueError(f"Workspace '{workspace}' of org '{org_name}' repeats the org name. Remove it.")
+            if workspace in orgs:
+                raise ValueError(
+                    f"Workspace '{workspace}' of org '{org_name}' collides with the org named '{workspace}'."
+                )
+            if workspace in index:
+                owner = index[workspace]
+                if owner == org_name:
+                    raise ValueError(f"Workspace '{workspace}' is listed twice for org '{org_name}'.")
+                raise ValueError(f"Workspace '{workspace}' belongs to org '{owner}' and to org '{org_name}'.")
+            index[workspace] = org_name
+    return index
 
 
 def load_config(config_path: Path | None = None) -> Config:
@@ -94,7 +169,10 @@ def load_config(config_path: Path | None = None) -> Config:
         config.orgs[org_name] = OrgConfig(
             name=org_name,
             token=token,
+            workspaces=_parse_workspaces(org_name, org_data),
         )
+
+    config.workspace_index = _build_workspace_index(config.orgs)
 
     return config
 

@@ -1,6 +1,7 @@
 """CLI context management for Slack CLI."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +14,7 @@ class Context:
     """CLI context passed to all commands."""
 
     config: "Config | None" = None
+    config_path: Path | None = None
     org_name: str | None = None
     verbose: bool = False
 
@@ -21,7 +23,7 @@ class Context:
         from .config import load_config
 
         if self.config is None:
-            self.config = load_config()
+            self.config = load_config(self.config_path)
         return self.config.get_org(self.org_name)
 
     def get_token(self) -> str:
