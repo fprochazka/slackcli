@@ -14,7 +14,11 @@ ERROR_HINTS: dict[str, str] = {
     "account_inactive": "The user account associated with the token is deactivated.",
     # Channel errors
     "not_in_channel": "The bot/user must be a member of this channel. Run /invite @yourbot in Slack.",
-    "channel_not_found": "Channel not found or you don't have access to it.",
+    "channel_not_found": (
+        "Channel not found or you don't have access to it. "
+        "The workspace in a Slack URL does not have to match your config alias. "
+        "Try --org=<name> (see `slack config`)."
+    ),
     "is_archived": "This channel is archived and cannot receive messages.",
     # Message errors
     "message_not_found": "The message with this timestamp was not found.",
@@ -50,8 +54,18 @@ ERROR_HINTS: dict[str, str] = {
     "not_allowed_token_type": "This API method is not allowed for the token type.",
     "ekm_access_denied": "Access denied due to Enterprise Key Management.",
     # User errors
-    "user_not_found": "User not found.",
+    "user_not_found": (
+        "User not found. "
+        "The workspace in a Slack URL does not have to match your config alias. "
+        "Try --org=<name> (see `slack config`)."
+    ),
     "user_not_visible": "The user is not visible to you.",
+    # File errors
+    "file_not_found": (
+        "File not found or you don't have access to it. "
+        "The workspace in a Slack URL does not have to match your config alias. "
+        "Try --org=<name> (see `slack config`)."
+    ),
     # Conversation membership errors
     "already_in_channel": "One or more users are already in the channel.",
     "cant_invite_self": "You cannot invite yourself to a channel.",

@@ -63,6 +63,23 @@ class UserInfo:
             updated_at=datetime.now().isoformat(),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON output.
+
+        Returns:
+            Dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "display_name": self.display_name,
+            "real_name": self.real_name,
+            "email": self.email,
+            "is_bot": self.is_bot,
+            "is_admin": self.is_admin,
+            "deleted": self.deleted,
+        }
+
     def to_cache_dict(self) -> dict[str, Any]:
         """Convert to dictionary for caching with metadata.
 

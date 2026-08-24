@@ -7,12 +7,23 @@ All output should go through these functions to ensure consistency.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .logging import console
 
 if TYPE_CHECKING:
-    from .models import Conversation, FileAttachment, Message, MessagesOutput, ResolvedMessage
+    from .models import (
+        Conversation,
+        FileAttachment,
+        Message,
+        MessagesOutput,
+        ResolvedConversation,
+        ResolvedFile,
+        ResolvedMessage,
+        ResolvedUser,
+    )
+    from .users import UserInfo
 
 
 def output_json(data: dict) -> None:
@@ -315,6 +326,112 @@ def output_resolved_message_text(resolved: ResolvedMessage) -> None:
     files_str = format_files(msg.files)
     if files_str:
         print(files_str)
+
+
+def output_resolved_conversation_json(resolved: ResolvedConversation) -> None:
+    """Output a resolved conversation as JSON.
+
+    Args:
+        resolved: The ResolvedConversation to serialize.
+    """
+    output_json(resolved.to_dict())
+
+
+def output_resolved_conversation_text(resolved: ResolvedConversation) -> None:
+    """Output a resolved conversation as formatted text.
+
+    Args:
+        resolved: The ResolvedConversation to display.
+    """
+    convo = resolved.conversation
+
+    if convo.is_im:
+        print(f"DM with {format_user_name(resolved.user_name, convo.user_id)} ({convo.id})")
+    else:
+        print(f"Channel: #{convo.name} ({convo.id})")
+
+    print(f"Type: {convo.get_type()}")
+
+    if not convo.is_im:
+        parts = [f"Member: {'yes' if convo.is_member else 'no'}"]
+        if convo.num_members:
+            parts.append(f"Members: {convo.num_members}")
+        print("  |  ".join(parts))
+
+    if convo.created:
+        created = datetime.fromtimestamp(convo.created, tz=UTC)
+        print(f"Created: {created.strftime('%Y-%m-%d')}")
+
+    if convo.topic:
+        print(f"Topic: {convo.topic}")
+    if convo.purpose:
+        print(f"Purpose: {convo.purpose}")
+
+    print()
+    print(f"To read messages: slack messages list {convo.id}")
+
+
+def output_user_text(user: UserInfo) -> None:
+    """Output user details as formatted text.
+
+    Args:
+        user: The UserInfo to display.
+    """
+    print(f"User ID:      {user.id}")
+    print(f"Username:     @{user.name}")
+    print(f"Display Name: {user.display_name}")
+    print(f"Real Name:    {user.real_name}")
+    print(f"Email:        {user.email or '(not available)'}")
+    print(f"Is Bot:       {'Yes' if user.is_bot else 'No'}")
+    print(f"Is Admin:     {'Yes' if user.is_admin else 'No'}")
+    print(f"Deleted:      {'Yes' if user.deleted else 'No'}")
+
+
+def output_resolved_user_json(resolved: ResolvedUser) -> None:
+    """Output a resolved user as JSON.
+
+    Args:
+        resolved: The ResolvedUser to serialize.
+    """
+    output_json(resolved.to_dict())
+
+
+def output_resolved_user_text(resolved: ResolvedUser) -> None:
+    """Output a resolved user as formatted text.
+
+    Args:
+        resolved: The ResolvedUser to display.
+    """
+    output_user_text(resolved.user)
+
+
+def output_resolved_file_json(resolved: ResolvedFile) -> None:
+    """Output a resolved file as JSON.
+
+    Args:
+        resolved: The ResolvedFile to serialize.
+    """
+    output_json(resolved.to_dict())
+
+
+def output_resolved_file_text(resolved: ResolvedFile) -> None:
+    """Output a resolved file as formatted text.
+
+    Args:
+        resolved: The ResolvedFile to display.
+    """
+    attachment = resolved.attachment
+
+    print(f"File: {attachment.name} ({attachment.format_size()})")
+    if attachment.title and attachment.title != attachment.name:
+        print(f"Title: {attachment.title}")
+    if attachment.mimetype:
+        print(f"Type: {attachment.mimetype}")
+    if attachment.url_private_download:
+        print(f"Download URL: {attachment.url_private_download}")
+
+    print()
+    print(f"To download: slack files download {attachment.id}")
 
 
 def output_conversations_text(

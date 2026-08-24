@@ -10,7 +10,7 @@ from slack_sdk.errors import SlackApiError
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
-from ..output import output_json
+from ..output import output_json, output_user_text
 from ..users import (
     UserInfo,
     fetch_all_users_from_api,
@@ -27,27 +27,6 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode=None,
 )
-
-
-def _user_to_dict(user: UserInfo) -> dict:
-    """Convert a UserInfo to a dictionary for JSON output.
-
-    Args:
-        user: The UserInfo to convert.
-
-    Returns:
-        Dictionary suitable for JSON serialization.
-    """
-    return {
-        "id": user.id,
-        "name": user.name,
-        "display_name": user.display_name,
-        "real_name": user.real_name,
-        "email": user.email,
-        "is_bot": user.is_bot,
-        "is_admin": user.is_admin,
-        "deleted": user.deleted,
-    }
 
 
 def _format_user_line(user: UserInfo) -> str:
@@ -159,7 +138,7 @@ def list_users(
         if output_json_flag:
             output_json(
                 {
-                    "users": [_user_to_dict(u) for u in filtered_users],
+                    "users": [u.to_dict() for u in filtered_users],
                     "count": len(filtered_users),
                 }
             )
@@ -238,7 +217,7 @@ def search_users(
             output_json(
                 {
                     "query": query,
-                    "users": [_user_to_dict(u) for u in matching_users],
+                    "users": [u.to_dict() for u in matching_users],
                     "count": len(matching_users),
                 }
             )
@@ -314,17 +293,9 @@ def get_user_command(
                 raise typer.Exit(1) from None
 
         if output_json_flag:
-            output_json(_user_to_dict(user))
+            output_json(user.to_dict())
         else:
-            # Display detailed user info
-            print(f"User ID:      {user.id}")
-            print(f"Username:     @{user.name}")
-            print(f"Display Name: {user.display_name}")
-            print(f"Real Name:    {user.real_name}")
-            print(f"Email:        {user.email or '(not available)'}")
-            print(f"Is Bot:       {'Yes' if user.is_bot else 'No'}")
-            print(f"Is Admin:     {'Yes' if user.is_admin else 'No'}")
-            print(f"Deleted:      {'Yes' if user.deleted else 'No'}")
+            output_user_text(user)
 
     except SlackApiError as e:
         error_msg, hint = format_error_with_hint(e)

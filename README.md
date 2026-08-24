@@ -360,6 +360,22 @@ slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123
 # Thread reply URL
 slack resolve 'https://myworkspace.slack.com/archives/C0123456789/p1234567890123456?thread_ts=1234567890.123456'
 
+# Channel URL - prints channel metadata, also for channels you are not a member of
+slack resolve 'https://myworkspace.slack.com/archives/C0123456789'
+
+# Legacy channel URL
+slack resolve 'https://myworkspace.slack.com/messages/C0123456789'
+
+# Web client URL (app.slack.com) - channel and thread
+slack resolve 'https://app.slack.com/client/T0123456789/C0123456789'
+slack resolve 'https://app.slack.com/client/T0123456789/C0123456789/thread/C0123456789-1234567890.123456'
+
+# User profile URL
+slack resolve 'https://myworkspace.slack.com/team/U0123456789'
+
+# File URL
+slack resolve 'https://myworkspace.slack.com/files/U0123456789/F0123456789/report.pdf'
+
 # JSON output
 slack resolve 'https://...' --json
 
@@ -367,7 +383,9 @@ slack resolve 'https://...' --json
 slack config
 ```
 
-The `resolve` command extracts the workspace from the URL, so `--org` is optional.
+The `resolve` command extracts the workspace from the URL, so `--org` is optional. An `app.slack.com` URL names no workspace, so it uses the default org or `--org`.
+
+The JSON output carries a `type` field with the value `message`, `conversation`, `user` or `file`.
 
 ## Output Formats
 

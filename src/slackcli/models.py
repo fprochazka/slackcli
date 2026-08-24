@@ -11,7 +11,10 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .users import UserInfo
 
 # Type alias for message text extraction and mention resolution functions
 MessageTextFunc = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str]
@@ -296,6 +299,7 @@ class ResolvedMessage:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
+            "type": "message",
             "channel_id": self.channel_id,
             "channel_name": self.channel_name,
             "message_ts": self.message_ts,
@@ -407,6 +411,55 @@ class Conversation:
         if self.is_group:
             return "Group"
         return "Unknown"
+
+
+@dataclass
+class ResolvedConversation:
+    """Output container for a resolved conversation (from URL)."""
+
+    conversation: Conversation
+    user_name: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "conversation",
+            "conversation": self.conversation.to_dict(),
+            "user_name": self.user_name,
+        }
+
+
+@dataclass
+class ResolvedUser:
+    """Output container for a resolved user (from URL)."""
+
+    user: UserInfo
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "user",
+            "user": self.user.to_dict(),
+        }
+
+
+@dataclass
+class ResolvedFile:
+    """Output container for a resolved file (from URL)."""
+
+    file: dict[str, Any]
+
+    @property
+    def attachment(self) -> FileAttachment:
+        """Get the file as a FileAttachment."""
+        return FileAttachment.from_api(self.file)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "file",
+            "file": self.attachment.to_dict(),
+        }
 
 
 def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str, str]) -> str:

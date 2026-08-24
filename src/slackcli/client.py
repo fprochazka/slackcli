@@ -80,6 +80,26 @@ class SlackCli:
 
         return load_conversations_from_cache(self.org_name)
 
+    def get_conversation_info(self, channel_id: str) -> dict[str, Any]:
+        """Fetch conversation metadata directly from the API.
+
+        Works for conversations the user is not a member of.
+
+        Args:
+            channel_id: The conversation ID.
+
+        Returns:
+            The conversation object from the API.
+
+        Raises:
+            SlackApiError: If the API call fails (e.g. channel_not_found).
+        """
+        logger.debug(f"Getting conversation info for {channel_id}")
+        response = self.client.conversations_info(channel=channel_id, include_num_members=True)
+        self._check_response(response, "Get conversation info")
+
+        return response["channel"]
+
     def invite_to_conversation(
         self,
         channel_id: str,

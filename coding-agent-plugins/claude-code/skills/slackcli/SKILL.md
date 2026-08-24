@@ -257,11 +257,20 @@ slack scheduled delete S0123456789                   # Delete by scheduled ID
 ## Resolve Slack URLs
 
 ```bash
-slack resolve 'https://workspace.slack.com/archives/C0123456789/p1234567890123456'
+slack resolve 'https://workspace.slack.com/archives/C0123456789/p1234567890123456'          # Message
+slack resolve 'https://workspace.slack.com/archives/C0123456789/p1234567890123456?thread_ts=1234567890.123456'  # Thread reply
+slack resolve 'https://workspace.slack.com/archives/C0123456789'                            # Channel metadata
+slack resolve 'https://workspace.slack.com/messages/C0123456789'                            # Channel (legacy URL)
+slack resolve 'https://workspace.slack.com/team/U0123456789'                                # User
+slack resolve 'https://workspace.slack.com/files/U0123456789/F0123456789/report.pdf'        # File
+slack resolve 'https://app.slack.com/client/T0123456789/C0123456789'                        # Channel (web client)
+slack resolve 'https://app.slack.com/client/T0123456789/C0123456789/thread/C0123456789-1234567890.123456'  # Thread root
 slack resolve 'https://...' --json
 ```
 
-Extracts workspace from URL automatically.
+Extracts workspace from URL automatically. An `app.slack.com` URL names no workspace, so it needs `--org` or `SLACK_ORG`.
+
+A channel URL resolves even when you are not a member. JSON output carries a `type` field: `message`, `conversation`, `user` or `file`.
 
 ## References
 
