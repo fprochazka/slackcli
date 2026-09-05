@@ -600,7 +600,7 @@ def send_message(
     message: Annotated[
         str | None,
         typer.Argument(
-            help="Message text to send. Use --stdin to read from stdin instead.",
+            help="Message body in Markdown, converted to Slack formatting. Pipe multi-line text to --stdin.",
         ),
     ] = None,
     thread: Annotated[
@@ -656,6 +656,11 @@ def send_message(
     The target can be:
     - A channel: #channel-name or C0123456789
     - A user (DM): @username, @email@example.com, or U0123456789
+
+    The body is Markdown: **bold**, - lists, ```lang code fences, [text](url)
+    links, quotes and tables are converted to Slack rich text; a body without
+    Markdown is sent as it stands. For multi-line text write it to a file and
+    pipe it to --stdin; a "\\n" inside a shell argument is not a newline.
 
     Examples:
         slack messages send '#general' "Hello world"
@@ -864,7 +869,7 @@ def edit_message(
     message: Annotated[
         str | None,
         typer.Argument(
-            help="New message text. Optional with --blocks or --remove-link-previews.",
+            help="New message body in Markdown. Optional with --blocks or --remove-link-previews.",
         ),
     ] = None,
     blocks_path: Annotated[
@@ -905,6 +910,8 @@ def edit_message(
     ] = False,
 ) -> None:
     """Edit an existing message in a Slack channel.
+
+    The new body is Markdown, converted the same way as messages send.
 
     With --remove-link-previews the message text is optional: the message is re-posted
     as it stands, without the previews Slack and other apps unfurled into it. The

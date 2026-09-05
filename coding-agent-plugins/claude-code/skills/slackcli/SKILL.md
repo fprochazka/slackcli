@@ -155,17 +155,25 @@ and the last N replies are shown — use `--head` to see the real parent.
 
 Send to channels or DMs. Target can be `#channel`, `@username`, `@email@example.com`, or IDs.
 
+Write the body in ordinary Markdown — the CLI converts it to Slack's formatting (see [Message Formatting](#message-formatting)). For a multi-line body, write it to a file and pipe it in with `--stdin`; a `\n` inside a shell argument is sent as two literal characters, not a newline.
+
 ```bash
 slack messages send '#channel' "Hello world"
 slack messages send '@john.doe' "Hello via DM"
 slack messages send '#channel' --thread 1234567890.123456 "Reply in thread"
-echo "Message" | slack messages send '#channel' --stdin
 slack messages send '#channel' --file ./report.pdf           # Upload file
 slack messages send '#channel' "Here's the report" --file ./report.pdf
 slack messages send '#channel' "Message" --json              # Returns message timestamp
+
+# Multi-line body: write the Markdown to a file, then pipe it in
+cat /tmp/scratch/deploy-report.md | slack messages send '#channel' --stdin
 ```
 
+Hand-built Block Kit payloads (`--blocks`) are an escape hatch for layouts Markdown cannot express; see `references/block-kit.md`.
+
 ### Edit Messages
+
+The new text is Markdown too, converted the same way as `send`.
 
 ```bash
 slack messages edit '#channel' 1234567890.123456 "Updated message"
@@ -182,18 +190,6 @@ slack messages edit '#channel' 1234567890.123456 "Updated message" --remove-link
 ```
 
 `--remove-link-previews` deletes the previews Slack and other apps unfurled into the message. Without new text the message keeps its content and only loses the previews. The removal sticks — a link left in the text is not unfurled again — though a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back except by deleting the message and posting it again. `--thread <parent ts>` is needed to find a thread reply when no new text is given.
-
-### Send Block Kit Blocks
-
-```bash
-slack messages send '#channel' --blocks ./blocks.json          # From a file
-cat blocks.json | slack messages send '#channel' --blocks -    # From stdin
-slack messages send '#channel' "Fallback text" --blocks ./blocks.json
-slack messages edit '#channel' 1234567890.123456 --blocks ./blocks.json
-slack scheduled create '#channel' "in 1h" --blocks ./blocks.json
-```
-
-The file holds a JSON array of blocks, or a Block Kit Builder export (an object with a `blocks` key). Limits are checked before the API call: 50 blocks, 3000 characters per `section`/`context` block, ~12,000 characters of rich text per message. The message text argument becomes the fallback Slack shows in notifications and search; without it the fallback is derived from the blocks. `--blocks` is for hand-built payloads only — for ordinary messages just write the body.
 
 ### Delete Messages
 
@@ -316,25 +312,20 @@ Format: `1234567890.123456`. Get them from:
 
 ## Message Formatting
 
-Write Markdown. When the body looks like Markdown (`**bold**`, `-` or `1.` lists, a ```` ```lang ```` fence, `[text](url)`, a table, `~~strike~~`), it is converted to Slack rich text: real bullet and numbered lists, code blocks with syntax highlighting, quotes, and links that show their label. Tables become monospace blocks, because Slack has no table element.
+Write Markdown. The CLI detects it and converts the body to Slack rich text, so a message renders with real lists, syntax-highlighted code and labelled links instead of raw markup.
 
-````bash
-slack messages send '#channel' "$(cat <<'EOF'
-## Deploy report
+| Write | Slack shows |
+|---|---|
+| `**bold**`, `*italic*`, `~~strike~~`, `` `code` `` | bold, italic, strikethrough, inline code |
+| `# Heading` | a bold line (Slack has no headings) |
+| `- item` / `1. item`, nested by indentation | real bullet / numbered lists, nesting shown by indent |
+| ```` ```sql ```` … ```` ``` ```` | code block with syntax highlighting and line numbers |
+| `> quote` | quote bar |
+| `[text](https://url)` | link showing *text* |
+| `\| a \| b \|` table | monospace block (Slack has no table element) |
+| blank line | paragraph break |
 
-Shipped **v2.4.0**, see [the release](https://example.com/releases/2.4.0).
-
-- migrations: none
-- rollback: `git revert abc123`
-
-```sql
-select count(*) from orders;
-```
-EOF
-)"
-````
-
-Slack's own tokens keep working inside Markdown and are the only way to write them:
+Slack's own tokens work inside Markdown and are the only way to write them:
 
 | Syntax | Result |
 |--------|--------|
@@ -345,12 +336,18 @@ Slack's own tokens keep working inside Markdown and are the only way to write th
 | `:emoji_name:` | emoji |
 | `<https://url\|text>` | hyperlink (a Markdown link works too) |
 
-Get user/channel IDs from `--json` output or `slack users get`. Other `<...>` forms, such as `<#G123456>` or `<!date^1234567890^{date}>`, are sent as literal text.
+Get user/channel IDs from `--json` output or `slack users get`. Other `<...>` forms, such as `<#G123456>` or `<!date^1234567890^{date}>`, are sent as literal text. Anything inside a code fence or backticks is sent verbatim.
 
-`--format` overrides the detection: `--format=markdown` converts a body that carries no obvious signal, `--format=mrkdwn` sends the body as it stands in Slack's own mrkdwn (`*bold*`, `_italic_`), which is what a body without Markdown signals does anyway. Note the dialects differ: in Markdown `*x*` is italic and `**x**` is bold.
+**Detection.** Conversion happens when the body carries a shape that exists only in Markdown: `**bold**`, `[text](url)`, a heading, a `-` or `1.` list line, a ```` ```lang ```` fence, a table row, `~~strike~~`. A body without one of those goes out unchanged as Slack mrkdwn (`*bold*`, `_italic_`), which keeps existing callers working. The dialects differ — in Markdown `*x*` is italic and `**x**` is bold — so pick one per message. `--format=markdown` forces the conversion for a body with no obvious signal; `--format=mrkdwn` sends the body as it stands. `send`, `edit` and `scheduled create` report the path taken in `--json` as `"format": "markdown" | "mrkdwn" | "blocks"`.
 
-`send`, `edit` and `scheduled create` all report which path was taken in `--json` as `"format": "markdown" | "mrkdwn" | "blocks"`.
+**Multi-line bodies**: write the Markdown to a file and pipe it in (`cat message.md | slack messages send '#channel' --stdin`); a shell argument cannot carry a newline written as `\n`.
 
-A message is at most 4000 characters, and a longer one is refused before it reaches Slack: split it yourself, for example into a thread. Rich text holds more than that, so a long Markdown body still posts — only the notification preview is shortened.
+**Length.** A message is at most 4000 characters and a longer one is refused before it reaches Slack: split it, for example into a thread. Rich text holds more, so a long Markdown body still posts — only the notification preview is shortened.
 
-Messages you send are signed automatically with a small grey footer naming the agent ("— sent from Claude Code"), so never write a "sent by Claude" line of your own. The user turns it off with `agent_signature = "off"` in their config.
+**Signature.** Messages sent from a coding agent get a small grey footer ("— sent from Claude Code") automatically, so never write a "sent by Claude" line of your own. The user turns it off with `agent_signature = "off"` in their config.
+
+## Additional Resources
+
+### Reference Files
+
+- **`references/block-kit.md`** — posting hand-built Block Kit JSON with `--blocks`: accepted shapes, fallback text, limits, an example payload.

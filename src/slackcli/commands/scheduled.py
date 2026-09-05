@@ -170,7 +170,7 @@ def create_scheduled(
     message: Annotated[
         str | None,
         typer.Argument(
-            help="Message text to schedule. Optional with --blocks.",
+            help="Message body in Markdown, converted to Slack formatting. Optional with --blocks.",
         ),
     ] = None,
     blocks_path: Annotated[
@@ -204,6 +204,8 @@ def create_scheduled(
     ] = False,
 ) -> None:
     """Schedule a message for future delivery.
+
+    The body is Markdown, converted to Slack rich text the same way as messages send.
 
     Examples:
         slack scheduled create '#general' "2025-02-03 09:00" "Good morning team!"
