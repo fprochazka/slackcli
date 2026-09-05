@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import typer
 from slack_sdk.errors import SlackApiError
 
-from ..blocks import get_message_text
+from ..blocks import get_message_body_text
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import error_console, get_logger
@@ -268,7 +268,7 @@ def _resolve_message(slack: SlackCli, parsed: ParsedSlackUrl, output_json_flag: 
     channels_map = slack.get_channel_names()
 
     # Convert to Message model
-    message = Message.from_api(message_data, users, channels_map, get_message_text, resolve_slack_mentions)
+    message = Message.from_api(message_data, users, channels_map, get_message_body_text, resolve_slack_mentions)
 
     # Create resolved message output
     resolved = ResolvedMessage(

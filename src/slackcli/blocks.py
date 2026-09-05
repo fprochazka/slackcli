@@ -6,6 +6,9 @@ including blocks, attachments, and rich text elements.
 
 from typing import Any
 
+# What separates one attachment from the next in text output.
+ATTACHMENT_SEPARATOR = "\n---\n"
+
 
 def render_rich_text_element(element: dict[str, Any], users: dict[str, str], channels: dict[str, str]) -> str:
     """Render a single rich text element to plain text.
@@ -477,6 +480,31 @@ def render_attachment(
     return "\n".join(parts)
 
 
+def join_message_parts(body: str, attachments: list[str]) -> str:
+    """Join a message body and its rendered attachments as text output shows them.
+
+    This is the one place the layout is decided, so the merged rendering built from an
+    API payload and the one built from a Message object cannot drift apart.
+
+    Args:
+        body: The rendered message body, which may be empty.
+        attachments: The rendered attachments, in order.
+
+    Returns:
+        The body, then the attachments separated by a rule.
+    """
+    parts = []
+
+    if body.strip():
+        parts.append(body)
+
+    attachments_text = ATTACHMENT_SEPARATOR.join(text for text in attachments if text)
+    if attachments_text.strip():
+        parts.append(attachments_text)
+
+    return "\n".join(parts)
+
+
 def render_attachments(
     attachments: list[dict[str, Any]],
     users: dict[str, str],
@@ -492,12 +520,38 @@ def render_attachments(
     Returns:
         Plain text representation.
     """
-    parts = []
-    for attachment in attachments:
-        text = render_attachment(attachment, users, channels)
-        if text:
-            parts.append(text)
-    return "\n---\n".join(parts)
+    return join_message_parts("", [render_attachment(attachment, users, channels) for attachment in attachments])
+
+
+def get_message_body_text(
+    message: dict[str, Any],
+    users: dict[str, str],
+    channels: dict[str, str],
+) -> str:
+    """Extract the author's own content from a message, without its attachments.
+
+    Slack messages can have blocks (rich content), a text field (fallback/summary),
+    and attachments (link unfurls and legacy rich content). This renders only the
+    body: the blocks when they carry content, otherwise the plain text field.
+    Attachments are rendered separately by render_attachments().
+
+    Args:
+        message: The message object from the Slack API.
+        users: Dictionary mapping user ID to display name.
+        channels: Dictionary mapping channel ID to channel name.
+
+    Returns:
+        Text content of the message body, without attachments.
+    """
+    # Blocks are the preferred source for Block Kit messages
+    blocks = message.get("blocks", [])
+    if blocks:
+        blocks_text = render_blocks(blocks, users, channels)
+        if blocks_text.strip():
+            return blocks_text
+
+    # Fall back to the plain text field
+    return message.get("text", "").strip()
 
 
 def get_message_text(
@@ -507,9 +561,12 @@ def get_message_text(
 ) -> str:
     """Extract text from a message, combining blocks and attachments.
 
-    Slack messages can have blocks (rich content), a text field (fallback/summary),
-    and attachments (legacy rich content). Some bots use blocks for a title and
-    attachments for the main content, so we render both when present.
+    Some bots use blocks for a title and attachments for the main content, so we
+    render both when present. Callers that need the two apart should use
+    get_message_body_text() and render_attachments() instead.
+
+    A message with attachments but no blocks shows its text field too: it is what the
+    author typed, and the attachments are only previews of the links in it.
 
     Args:
         message: The message object from the Slack API.
@@ -519,29 +576,7 @@ def get_message_text(
     Returns:
         Text content of the message.
     """
-    parts = []
+    body = get_message_body_text(message, users, channels)
+    attachments = [render_attachment(attachment, users, channels) for attachment in message.get("attachments", [])]
 
-    # Render blocks (preferred source for Block Kit messages)
-    blocks = message.get("blocks", [])
-    if blocks:
-        blocks_text = render_blocks(blocks, users, channels)
-        if blocks_text.strip():
-            parts.append(blocks_text)
-
-    # Render attachments (may contain additional content alongside blocks)
-    attachments = message.get("attachments", [])
-    if attachments:
-        attachments_text = render_attachments(attachments, users, channels)
-        if attachments_text.strip():
-            parts.append(attachments_text)
-
-    if parts:
-        return "\n".join(parts)
-
-    # Fall back to the plain text field
-    text = message.get("text", "").strip()
-    if text:
-        return text
-
-    # No content found
-    return ""
+    return join_message_parts(body, attachments)

@@ -439,11 +439,25 @@ Machine-readable format for AI agents:
           "size": 102400,
           "url_private_download": "https://files.slack.com/..."
         }
+      ],
+      "attachments": [
+        {
+          "id": 1,
+          "from_url": "https://linear.app/acme/issue/ENG-1",
+          "is_app_unfurl": true,
+          "app_id": "A0123456789",
+          "service_name": "Linear",
+          "title": "ENG-1 Fix the thing",
+          "title_link": "https://linear.app/acme/issue/ENG-1",
+          "text": "Reported by @alice"
+        }
       ]
     }
   ]
 }
 ```
+
+`text` is what the author wrote. `attachments` holds the link previews Slack and other apps added to the message, which nobody typed. Text output still prints the two together, so a message reads the same as in Slack.
 
 ## Developing
 

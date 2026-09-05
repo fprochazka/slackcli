@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import typer
 from slack_sdk.errors import SlackApiError
 
-from ..blocks import get_message_text
+from ..blocks import get_message_body_text
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -199,7 +199,7 @@ def convert_messages_to_model(
     """
     # Client now returns messages in ascending order.
     messages = [
-        Message.from_api(msg, users, channels, get_message_text, resolve_slack_mentions) for msg in raw_messages
+        Message.from_api(msg, users, channels, get_message_body_text, resolve_slack_mentions) for msg in raw_messages
     ]
 
     return MessagesOutput(
@@ -566,7 +566,7 @@ def list_messages(
 
     if thread_parent_omitted and thread_parent_raw is not None:
         omitted_parent_msg = Message.from_api(
-            thread_parent_raw, users, channels, get_message_text, resolve_slack_mentions
+            thread_parent_raw, users, channels, get_message_body_text, resolve_slack_mentions
         )
         messages_output.thread_parent_omitted = True
         messages_output.omitted_parent = omitted_parent_msg

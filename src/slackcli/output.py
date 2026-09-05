@@ -193,8 +193,9 @@ def _output_message_text(
     print(f"{base_indent}{msg.datetime_str}  {user_name}")
 
     # Print message text (or file attachments if no text)
-    if msg.text:
-        print(format_message_text(msg.text, indent=text_indent))
+    text = msg.display_text
+    if text:
+        print(format_message_text(text, indent=text_indent))
     elif msg.files:
         # No text but has files - will be printed below
         pass
@@ -256,7 +257,7 @@ def output_thread_text(
         replies = list(messages[1:])
         user_name = format_user_name(parent.user_name, parent.user_id)
         print(f"{parent.datetime_str}  {user_name} [parent]")
-        print(format_message_text(parent.text))
+        print(format_message_text(parent.display_text))
 
         files_str = format_files(parent.files, indent="  ")
         if files_str:
@@ -274,7 +275,7 @@ def output_thread_text(
     for reply in replies:
         user_name = format_user_name(reply.user_name, reply.user_id)
         print(f"  {reply.datetime_str}  {user_name}")
-        print(format_message_text(reply.text, indent="    "))
+        print(format_message_text(reply.display_text, indent="    "))
 
         files_str = format_files(reply.files, indent="    ")
         if files_str:
@@ -321,7 +322,7 @@ def output_resolved_message_text(resolved: ResolvedMessage) -> None:
     msg = resolved.message
     user_name = format_user_name(msg.user_name, msg.user_id)
     print(f"{msg.datetime_str}  {user_name}")
-    print(format_message_text(msg.text))
+    print(format_message_text(msg.display_text))
 
     files_str = format_files(msg.files)
     if files_str:

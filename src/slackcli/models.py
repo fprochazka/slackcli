@@ -13,11 +13,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from .blocks import join_message_parts, render_attachment
+
 if TYPE_CHECKING:
     from .users import UserInfo
 
-# Type alias for message text extraction and mention resolution functions
+# Type alias for message text extraction functions
 MessageTextFunc = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str]
+
+# Type alias for mention resolution functions
+MentionResolverFunc = Callable[[str, dict[str, str], dict[str, str]], str]
 
 
 def format_file_size(size: int) -> str:
@@ -95,6 +100,70 @@ class FileAttachment:
 
 
 @dataclass
+class Attachment:
+    """Represents a Slack message attachment: a link unfurl or legacy rich content.
+
+    Attachments are not written by the message author. Slack fills them with previews
+    of the links in the message, and apps (Linear, GitHub, ...) unfurl their own links
+    into them, so they are kept apart from the message body.
+    """
+
+    id: int | None
+    from_url: str
+    is_app_unfurl: bool
+    app_id: str
+    service_name: str
+    title: str
+    title_link: str
+    text: str
+
+    @classmethod
+    def from_api(
+        cls,
+        data: dict[str, Any],
+        users: dict[str, str],
+        channels: dict[str, str],
+        resolve_mentions_func: MentionResolverFunc,
+    ) -> Attachment:
+        """Create an Attachment from Slack API response data.
+
+        Args:
+            data: The attachment data from Slack API.
+            users: Dictionary mapping user ID to display name.
+            channels: Dictionary mapping channel ID to channel name.
+            resolve_mentions_func: Function to resolve Slack mentions in text.
+
+        Returns:
+            An Attachment instance.
+        """
+        text = render_attachment(data, users, channels)
+        text = resolve_mentions_func(text, users, channels)
+        return cls(
+            id=data.get("id"),
+            from_url=data.get("from_url", ""),
+            is_app_unfurl=data.get("is_app_unfurl", False),
+            app_id=data.get("app_id", ""),
+            service_name=data.get("service_name", ""),
+            title=data.get("title", ""),
+            title_link=data.get("title_link", ""),
+            text=text,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "from_url": self.from_url,
+            "is_app_unfurl": self.is_app_unfurl,
+            "app_id": self.app_id,
+            "service_name": self.service_name,
+            "title": self.title,
+            "title_link": self.title_link,
+            "text": self.text,
+        }
+
+
+@dataclass
 class Reaction:
     """Represents a reaction on a Slack message."""
 
@@ -147,6 +216,12 @@ class Message:
     reactions: list[Reaction] = field(default_factory=list)
     replies: list[Message] = field(default_factory=list)
     files: list[FileAttachment] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
+
+    @property
+    def display_text(self) -> str:
+        """Get the message body followed by its attachments, as shown in text output."""
+        return join_message_parts(self.text, [attachment.text for attachment in self.attachments])
 
     @property
     def datetime(self) -> datetime | None:
@@ -171,7 +246,7 @@ class Message:
         users: dict[str, str],
         channels: dict[str, str],
         get_text_func: MessageTextFunc,
-        resolve_mentions_func: MessageTextFunc,
+        resolve_mentions_func: MentionResolverFunc,
     ) -> Message:
         """Create a Message from Slack API response data.
 
@@ -179,7 +254,7 @@ class Message:
             data: The message data from Slack API.
             users: Dictionary mapping user ID to display name.
             channels: Dictionary mapping channel ID to channel name.
-            get_text_func: Function to extract text from message (handles blocks).
+            get_text_func: Function to extract the body text from a message (handles blocks).
             resolve_mentions_func: Function to resolve Slack mentions in text.
 
         Returns:
@@ -208,6 +283,10 @@ class Message:
         files_data = data.get("files", [])
         files = [FileAttachment.from_api(f) for f in files_data]
 
+        # Parse attachments (link unfurls and legacy rich content)
+        attachments_data = data.get("attachments", [])
+        attachments = [Attachment.from_api(a, users, channels, resolve_mentions_func) for a in attachments_data]
+
         return cls(
             ts=ts,
             user_id=user_id or None,
@@ -218,6 +297,7 @@ class Message:
             reactions=reactions,
             replies=replies,
             files=files,
+            attachments=attachments,
         )
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
@@ -238,6 +318,7 @@ class Message:
             "reply_count": self.reply_count,
             "reactions": [r.to_dict() for r in self.reactions],
             "files": [f.to_dict() for f in self.files],
+            "attachments": [a.to_dict() for a in self.attachments],
         }
 
         if include_replies and self.replies:

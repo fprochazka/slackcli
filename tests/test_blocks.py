@@ -98,6 +98,15 @@ class TestGetMessageText:
         result = get_message_text(message, USERS, CHANNELS)
         assert "Important details here" in result
 
+    def test_text_kept_alongside_attachments_when_no_blocks(self) -> None:
+        """Without blocks the text field is what the author typed, so it stays."""
+        message = {
+            "text": "Worth reading: https://example.com",
+            "attachments": [{"text": "An example page", "from_url": "https://example.com"}],
+        }
+        result = get_message_text(message, USERS, CHANNELS)
+        assert result == "Worth reading: https://example.com\nAn example page\nhttps://example.com"
+
     def test_text_fallback_not_used_when_blocks_present(self) -> None:
         """The text field is a fallback — should not appear when blocks render content."""
         message = {
