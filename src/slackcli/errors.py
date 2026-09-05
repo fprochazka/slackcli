@@ -25,7 +25,11 @@ ERROR_HINTS: dict[str, str] = {
     "cant_update_message": "You can only edit your own messages.",
     "cant_delete_message": "You can only delete your own messages, or you need admin privileges.",
     "edit_window_closed": "The edit window for this message has expired.",
-    "msg_too_long": "Message exceeds Slack's 40,000 character limit.",
+    "msg_too_long": "Slack rejects message text over 4000 characters. Split the message, or shorten it.",
+    "msg_blocks_too_long": (
+        "Slack refuses rich-text content at roughly 13,000 characters per message, and this CLI checks at 12,000 "
+        "to stay clear of it. Split the message into several."
+    ),
     "no_text": "Message text cannot be empty.",
     "compliance_exports_prevent_deletion": "Compliance exports are enabled, preventing message deletion.",
     # Reaction errors

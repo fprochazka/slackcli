@@ -12,6 +12,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_body_text
+from ..compose import ComposeError, check_plain_text_length
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -664,6 +665,14 @@ def send_message(
         )
         raise typer.Exit(1)
 
+    # Reject an over-long message before anything is posted
+    if message is not None:
+        try:
+            check_plain_text_length(message)
+        except ComposeError as e:
+            error_console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1) from None
+
     # Get org context
     ctx = get_context()
     slack = ctx.get_slack_client()
@@ -785,6 +794,12 @@ def edit_message(
     if not message.strip():
         error_console.print("[red]Message text cannot be empty.[/red]")
         raise typer.Exit(1)
+
+    try:
+        check_plain_text_length(message)
+    except ComposeError as e:
+        error_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
 
     # Get org context
     ctx = get_context()

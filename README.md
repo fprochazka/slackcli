@@ -246,6 +246,10 @@ slack messages delete '#general' 1234567890.123456 --force
 
 Messages with file attachments will show the file name, size, and download URL.
 
+#### Limits
+
+A message is at most 4000 characters. Slack does not refuse a longer one on send: it silently splits it into several posts and reports only the last part's timestamp, and `messages edit` then rejects it outright. `send`, `edit` and `scheduled create` therefore check the length before calling the API and fail without posting anything, so split a long message yourself, for example into a thread.
+
 ### Reactions
 
 ```bash

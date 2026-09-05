@@ -8,6 +8,7 @@ from typing import Annotated, Any
 import typer
 from slack_sdk.errors import SlackApiError
 
+from ..compose import ComposeError, check_plain_text_length
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -216,6 +217,13 @@ def create_scheduled(
     if scheduled_time > max_future:
         error_console.print("[red]Scheduled time cannot be more than 120 days in the future.[/red]")
         raise typer.Exit(1)
+
+    # Reject an over-long message before anything is scheduled
+    try:
+        check_plain_text_length(message)
+    except ComposeError as e:
+        error_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
 
     # Get org context
     ctx = get_context()
