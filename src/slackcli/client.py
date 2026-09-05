@@ -613,13 +613,16 @@ class SlackCli:
         channel_id: str,
         text: str,
         thread_ts: str | None = None,
+        blocks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Send a message to a channel.
 
         Args:
             channel_id: The channel ID.
-            text: The message text.
+            text: The message text. With blocks it is the fallback Slack shows in
+                notifications, in search results and in clients that cannot render them.
             thread_ts: Optional thread timestamp to reply to.
+            blocks: Optional Block Kit blocks carrying the message content.
 
         Returns:
             The API response data including the message timestamp.
@@ -634,6 +637,8 @@ class SlackCli:
 
         if thread_ts:
             kwargs["thread_ts"] = thread_ts
+        if blocks is not None:
+            kwargs["blocks"] = blocks
 
         logger.debug(f"Sending message to {channel_id}" + (f" (thread: {thread_ts})" if thread_ts else ""))
         response = self.client.chat_postMessage(**kwargs)
@@ -927,14 +932,17 @@ class SlackCli:
         text: str,
         post_at: int,
         thread_ts: str | None = None,
+        blocks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Schedule a message for future delivery.
 
         Args:
             channel_id: The channel ID.
-            text: The message text.
+            text: The message text. With blocks it is the fallback Slack shows in
+                notifications, in search results and in clients that cannot render them.
             post_at: Unix timestamp for when to send the message.
             thread_ts: Optional thread timestamp to reply to.
+            blocks: Optional Block Kit blocks carrying the message content.
 
         Returns:
             The API response data including the scheduled_message_id.
@@ -950,6 +958,8 @@ class SlackCli:
 
         if thread_ts:
             kwargs["thread_ts"] = thread_ts
+        if blocks is not None:
+            kwargs["blocks"] = blocks
 
         logger.debug(
             f"Scheduling message in {channel_id} for {post_at}" + (f" (thread: {thread_ts})" if thread_ts else "")

@@ -257,6 +257,25 @@ Messages with file attachments will show the file name, size, and download URL.
 
 `--remove-link-previews` drops the previews Slack and other apps unfurled into a message. The message text is optional there: without it the message keeps the content it has and only loses the previews. The removal sticks — a link left in the text is not unfurled again — although a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back at all: only deleting the message and posting it again restores it. Use `--thread <parent ts>` when the message is a thread reply and you are not passing new text, because a reply cannot be found without knowing its thread.
 
+#### Sending rich blocks
+
+```bash
+# Post a Block Kit payload built by hand or by the Block Kit Builder
+slack messages send '#general' --blocks ./blocks.json
+
+# Read the blocks from stdin
+cat blocks.json | slack messages send '#general' --blocks -
+
+# Give the message its own fallback text (otherwise it is derived from the blocks)
+slack messages send '#general' "Deploy report" --blocks ./blocks.json
+
+# The same option works on edit and on scheduled create
+slack messages edit '#general' 1234567890.123456 --blocks ./blocks.json
+slack scheduled create '#general' "in 1h" --blocks ./blocks.json
+```
+
+The file holds either a JSON array of blocks or a Block Kit Builder export, an object with a `blocks` key. Slack's limits are checked before the call: at most 50 blocks, 3000 characters of text per `section` or `context` block, and roughly 12,000 characters of rich text per message. Every message that carries blocks also carries a fallback text, which is what Slack shows in notifications, in search results and in clients that cannot render blocks. `--blocks` is the escape hatch for hand-built payloads; a plain message body needs none of this.
+
 #### Limits
 
 A message is at most 4000 characters. Slack does not refuse a longer one on send: it silently splits it into several posts and reports only the last part's timestamp, and `messages edit` then rejects it outright. `send`, `edit` and `scheduled create` therefore check the length before calling the API and fail without posting anything, so split a long message yourself, for example into a thread.

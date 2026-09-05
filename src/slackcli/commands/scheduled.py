@@ -8,13 +8,12 @@ from typing import Annotated, Any
 import typer
 from slack_sdk.errors import SlackApiError
 
-from ..compose import ComposeError, check_plain_text_length
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
 from ..output import format_message_text, output_json
 from ..time_utils import parse_future_time
-from .messages import resolve_channel
+from .messages import compose_or_exit, resolve_channel
 
 logger = get_logger(__name__)
 
@@ -168,11 +167,18 @@ def create_scheduled(
         ),
     ],
     message: Annotated[
-        str,
+        str | None,
         typer.Argument(
-            help="Message text to schedule.",
+            help="Message text to schedule. Optional with --blocks.",
         ),
-    ],
+    ] = None,
+    blocks_path: Annotated[
+        str | None,
+        typer.Option(
+            "--blocks",
+            help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
+        ),
+    ] = None,
     thread: Annotated[
         str | None,
         typer.Option(
@@ -198,7 +204,13 @@ def create_scheduled(
         slack scheduled create '#general' "tomorrow" "Daily standup"
         slack scheduled create '#general' "tomorrow 9am" "Good morning!"
         slack scheduled create '#general' --thread 1234567890.123456 "in 1h" "Thread reply"
+        slack scheduled create '#general' "in 1h" --blocks ./blocks.json
     """
+    # Validate the content
+    if message is None and blocks_path is None:
+        error_console.print("[red]Message text is required. Provide it as an argument or pass --blocks.[/red]")
+        raise typer.Exit(1)
+
     # Parse the time specification
     try:
         scheduled_time = parse_future_time(post_at)
@@ -218,12 +230,8 @@ def create_scheduled(
         error_console.print("[red]Scheduled time cannot be more than 120 days in the future.[/red]")
         raise typer.Exit(1)
 
-    # Reject an over-long message before anything is scheduled
-    try:
-        check_plain_text_length(message)
-    except ComposeError as e:
-        error_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1) from None
+    # Compose the message before anything is scheduled, so limits fail here and not in Slack
+    composed = compose_or_exit(message, blocks_path)
 
     # Get org context
     ctx = get_context()
@@ -244,10 +252,12 @@ def create_scheduled(
 
         result = slack.schedule_message(
             channel_id,
-            message,
+            composed.text,
             post_at=int(scheduled_time.timestamp()),
             thread_ts=thread,
+            blocks=composed.blocks,
         )
+        result["format"] = composed.format
 
         if output_json_flag:
             output_json(result)

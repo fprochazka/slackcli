@@ -12,7 +12,13 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_body_text
-from ..compose import ComposeError, check_plain_text_length, preview_removal_update
+from ..compose import (
+    ComposedMessage,
+    ComposeError,
+    compose_message,
+    load_blocks,
+    preview_removal_update,
+)
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -610,6 +616,13 @@ def send_message(
             help="Read message text from stdin.",
         ),
     ] = False,
+    blocks_path: Annotated[
+        str | None,
+        typer.Option(
+            "--blocks",
+            help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
+        ),
+    ] = None,
     files: Annotated[
         list[Path] | None,
         typer.Option(
@@ -642,9 +655,15 @@ def send_message(
         echo "Hello" | slack messages send '#general' --stdin
         slack messages send '#general' --file ./report.pdf
         slack messages send '#general' "Here's the report" --file ./report.pdf
+        slack messages send '#general' --blocks ./blocks.json
+        cat blocks.json | slack messages send '#general' --blocks -
     """
     # Validate message input
     has_files = files and len(files) > 0
+
+    if stdin and blocks_path is not None:
+        error_console.print("[red]Cannot use both --stdin and --blocks. Only one of them can read stdin.[/red]")
+        raise typer.Exit(1)
 
     if stdin:
         if message is not None:
@@ -658,20 +677,18 @@ def send_message(
         if not message.strip():
             error_console.print("[red]Empty message received from stdin.[/red]")
             raise typer.Exit(1)
-    elif message is None and not has_files:
-        # Message is required unless we have files
+    elif message is None and blocks_path is None and not has_files:
+        # Message is required unless we have blocks or files
         error_console.print(
-            "[red]Message text is required. Provide it as an argument, use --stdin, or attach files with --file.[/red]"
+            "[red]Message text is required. Provide it as an argument, use --stdin, pass --blocks, "
+            "or attach files with --file.[/red]"
         )
         raise typer.Exit(1)
 
-    # Reject an over-long message before anything is posted
-    if message is not None:
-        try:
-            check_plain_text_length(message)
-        except ComposeError as e:
-            error_console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1) from None
+    # Compose the message before anything is posted, so limits fail here and not in Slack
+    composed = None
+    if message or blocks_path is not None:
+        composed = compose_or_exit(message, blocks_path)
 
     # Get org context
     ctx = get_context()
@@ -692,32 +709,17 @@ def send_message(
         # Send message first if we have one (and we have files)
         # If no files, just send the message normally
         # If files but no message, the first file gets the "initial_comment" treatment
-        if message and has_files:
-            # Send message first, then upload files (files will be separate from message)
+        # The message goes out first; any files are uploaded after it, as separate posts
+        if composed:
             if not output_json_flag:
                 if thread:
                     console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
                 else:
                     console.print(f"[dim]Sending message to {display_name}...[/dim]")
 
-            msg_result = slack.send_message(channel_id, message, thread_ts=thread)
+            msg_result = slack.send_message(channel_id, composed.text, thread_ts=thread, blocks=composed.blocks)
             results["message"] = msg_result
-
-            if not output_json_flag:
-                ts = msg_result.get("ts", "unknown")
-                console.print("[green]Message sent successfully.[/green]")
-                console.print(f"[dim]ts={ts}[/dim]")
-
-        elif message:
-            # Message only, no files
-            if not output_json_flag:
-                if thread:
-                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
-                else:
-                    console.print(f"[dim]Sending message to {display_name}...[/dim]")
-
-            msg_result = slack.send_message(channel_id, message, thread_ts=thread)
-            results["message"] = msg_result
+            results["format"] = composed.format
 
             if not output_json_flag:
                 ts = msg_result.get("ts", "unknown")
@@ -753,6 +755,27 @@ def send_message(
         if hint:
             error_console.print(f"[dim]Hint: {hint}[/dim]")
 
+        raise typer.Exit(1) from None
+
+
+def compose_or_exit(message: str | None, blocks_path: str | None) -> ComposedMessage:
+    """Compose a message body and blocks, reporting a composition error and exiting.
+
+    Args:
+        message: The message text, or None when the content comes from blocks alone.
+        blocks_path: Path to a JSON file with blocks, "-" for stdin, or None.
+
+    Returns:
+        The composed message.
+
+    Raises:
+        typer.Exit: If the blocks cannot be read, or the message exceeds a Slack limit.
+    """
+    try:
+        blocks = load_blocks(blocks_path) if blocks_path is not None else None
+        return compose_message(message, blocks=blocks)
+    except ComposeError as e:
+        error_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None
 
 
@@ -820,7 +843,14 @@ def edit_message(
     message: Annotated[
         str | None,
         typer.Argument(
-            help="New message text. Optional with --remove-link-previews.",
+            help="New message text. Optional with --blocks or --remove-link-previews.",
+        ),
+    ] = None,
+    blocks_path: Annotated[
+        str | None,
+        typer.Option(
+            "--blocks",
+            help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
         ),
     ] = None,
     remove_link_previews: Annotated[
@@ -860,22 +890,21 @@ def edit_message(
         slack messages edit C0123456789 1234567890.123456 "Fixed typo"
         slack messages edit '#general' 1234567890.123456 --remove-link-previews
         slack messages edit '#general' 1234567890.123456 --remove-link-previews --thread 1234567890.000001
+        slack messages edit '#general' 1234567890.123456 --blocks ./blocks.json
     """
-    # Validate message text
-    if message is None:
-        if not remove_link_previews:
-            error_console.print("[red]Message text is required unless --remove-link-previews is given.[/red]")
-            raise typer.Exit(1)
-    else:
-        if not message.strip():
-            error_console.print("[red]Message text cannot be empty.[/red]")
-            raise typer.Exit(1)
+    # Validate the new content
+    if message is not None and not message.strip():
+        error_console.print("[red]Message text cannot be empty.[/red]")
+        raise typer.Exit(1)
 
-        try:
-            check_plain_text_length(message)
-        except ComposeError as e:
-            error_console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1) from None
+    composed = None
+    if message is not None or blocks_path is not None:
+        composed = compose_or_exit(message, blocks_path)
+    elif not remove_link_previews:
+        error_console.print(
+            "[red]New message text or --blocks is required unless --remove-link-previews is given.[/red]"
+        )
+        raise typer.Exit(1)
 
     # Get org context
     ctx = get_context()
@@ -888,21 +917,24 @@ def edit_message(
     # Edit message
     try:
         if not output_json_flag:
-            if message is None:
+            if composed is None:
                 console.print(f"[dim]Removing link previews from message {timestamp} in #{channel_name}...[/dim]")
             else:
                 console.print(f"[dim]Editing message {timestamp} in #{channel_name}...[/dim]")
 
-        if message is None:
+        if composed is None:
             update = _reload_message_content(slack, channel_id, channel_name, timestamp, thread)
             result = slack.edit_message(channel_id, timestamp, **update)
+            result["format"] = "blocks" if "blocks" in update else "mrkdwn"
         else:
             result = slack.edit_message(
                 channel_id,
                 timestamp,
-                text=message,
+                text=composed.text,
+                blocks=composed.blocks,
                 clear_attachments=remove_link_previews,
             )
+            result["format"] = composed.format
 
         if remove_link_previews:
             result["attachments_removed"] = True
@@ -910,7 +942,7 @@ def edit_message(
         if output_json_flag:
             output_json(result)
         else:
-            if message is not None:
+            if composed is not None:
                 console.print("[green]Message edited successfully.[/green]")
             if remove_link_previews:
                 console.print("[green]Link previews removed.[/green]")

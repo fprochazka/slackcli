@@ -183,6 +183,18 @@ slack messages edit '#channel' 1234567890.123456 "Updated message" --remove-link
 
 `--remove-link-previews` deletes the previews Slack and other apps unfurled into the message. Without new text the message keeps its content and only loses the previews. The removal sticks — a link left in the text is not unfurled again — though a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back except by deleting the message and posting it again. `--thread <parent ts>` is needed to find a thread reply when no new text is given.
 
+### Send Block Kit Blocks
+
+```bash
+slack messages send '#channel' --blocks ./blocks.json          # From a file
+cat blocks.json | slack messages send '#channel' --blocks -    # From stdin
+slack messages send '#channel' "Fallback text" --blocks ./blocks.json
+slack messages edit '#channel' 1234567890.123456 --blocks ./blocks.json
+slack scheduled create '#channel' "in 1h" --blocks ./blocks.json
+```
+
+The file holds a JSON array of blocks, or a Block Kit Builder export (an object with a `blocks` key). Limits are checked before the API call: 50 blocks, 3000 characters per `section`/`context` block, ~12,000 characters of rich text per message. The message text argument becomes the fallback Slack shows in notifications and search; without it the fallback is derived from the blocks. `--blocks` is for hand-built payloads only — for ordinary messages just write the body.
+
 ### Delete Messages
 
 ```bash
