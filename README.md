@@ -283,15 +283,19 @@ Messages with file attachments will show the file name, size, and download URL.
 Message bodies are written in Markdown. When a body looks like Markdown, it is converted to Slack rich text before it is sent: `**bold**`, `~~strike~~`, `` `code` ``, `-` and `1.` lists (nested ones included), ```` ```sql ```` fences with syntax highlighting, `>` quotes, `[label](url)` links and `#` headings, which render bold. A Markdown table becomes a monospace block, because Slack has no table element, so its columns stay aligned.
 
 ```bash
-slack messages send '#general' "$(cat <<'EOF'
+# Write a multi-line body to a file and pipe it in; a "\n" inside a shell argument is not a newline
+cat deploy-report.md | slack messages send '#general' --stdin
+```
+
+where `deploy-report.md` holds:
+
+```markdown
 ## Deploy report
 
 Shipped **v2.4.0**, see [the release](https://example.com/releases/2.4.0).
 
 - migrations: none
 - rollback: `git revert abc123`
-EOF
-)"
 ```
 
 Slack's own syntax keeps working inside a Markdown body, and is still the only way to write a mention: `<@U0123456789>`, `<#C0123456789|general>`, `<!here>`, `<!subteam^S0123456|@backend>`, `:white_check_mark:` and `<https://example.com|labelled link>`. Any other `<...>` form, such as `<#G0123456>` or `<!date^1234567890^{date}>`, is sent as literal text. Slack syntax inside a code fence or a backtick span is left exactly as written.
