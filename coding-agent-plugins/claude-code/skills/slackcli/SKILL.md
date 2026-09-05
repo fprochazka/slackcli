@@ -316,19 +316,39 @@ Format: `1234567890.123456`. Get them from:
 
 ## Message Formatting
 
-When composing messages, use Slack's mrkdwn syntax. **Slack does NOT support markdown tables** — use plain text alignment, bullet lists, or code blocks to present tabular data instead.
+Write Markdown. When the body looks like Markdown (`**bold**`, `-` or `1.` lists, a ```` ```lang ```` fence, `[text](url)`, a table, `~~strike~~`), it is converted to Slack rich text: real bullet and numbered lists, code blocks with syntax highlighting, quotes, and links that show their label. Tables become monospace blocks, because Slack has no table element.
 
+````bash
+slack messages send '#channel' "$(cat <<'EOF'
+## Deploy report
+
+Shipped **v2.4.0**, see [the release](https://example.com/releases/2.4.0).
+
+- migrations: none
+- rollback: `git revert abc123`
+
+```sql
+select count(*) from orders;
+```
+EOF
+)"
+````
+
+Slack's own tokens keep working inside Markdown and are the only way to write them:
 
 | Syntax | Result |
 |--------|--------|
-| `*bold*` | **bold** |
-| `_italic_` | _italic_ |
-| `` `code` `` | `code` |
-| ` ```code block``` ` | code block |
 | `<@U123456>` | @mention user |
 | `<#C123456>` | #mention channel |
-| `<!here>` | @here |
-| `<!channel>` | @channel |
-| `<https://url\|text>` | hyperlink |
+| `<!here>`, `<!channel>` | @here, @channel |
+| `<!subteam^S123456>` | @mention a user group |
+| `:emoji_name:` | emoji |
+| `<https://url\|text>` | hyperlink (a Markdown link works too) |
 
-Get user/channel IDs from `--json` output or `slack users get`.
+Get user/channel IDs from `--json` output or `slack users get`. Other `<...>` forms, such as `<#G123456>` or `<!date^1234567890^{date}>`, are sent as literal text.
+
+`--format` overrides the detection: `--format=markdown` converts a body that carries no obvious signal, `--format=mrkdwn` sends the body as it stands in Slack's own mrkdwn (`*bold*`, `_italic_`), which is what a body without Markdown signals does anyway. Note the dialects differ: in Markdown `*x*` is italic and `**x**` is bold.
+
+`send`, `edit` and `scheduled create` all report which path was taken in `--json` as `"format": "markdown" | "mrkdwn" | "blocks"`.
+
+A message is at most 4000 characters, and a longer one is refused before it reaches Slack: split it yourself, for example into a thread. Rich text holds more than that, so a long Markdown body still posts — only the notification preview is shortened.

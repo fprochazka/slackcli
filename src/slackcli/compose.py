@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from .blocks import render_blocks
+from .markdown import looks_like_markdown, markdown_to_blocks
 
 # Slack splits a plain text message longer than this into several posts on
 # chat.postMessage, and rejects it outright on chat.update (msg_too_long).
@@ -29,6 +31,20 @@ SECTION_TEXT_LIMIT = 3000
 RICH_TEXT_LIMIT = 12_000
 
 
+class MessageFormat(str, Enum):
+    """How a message body should be read.
+
+    Attributes:
+        auto: Markdown when the body looks like Markdown, plain mrkdwn otherwise.
+        markdown: Always convert the body from Markdown to rich text.
+        mrkdwn: Always send the body as it is, in Slack's own mrkdwn.
+    """
+
+    auto = "auto"
+    markdown = "markdown"
+    mrkdwn = "mrkdwn"
+
+
 class ComposeError(ValueError):
     """A message cannot be composed for Slack, with a hint on how to fix it."""
 
@@ -41,7 +57,7 @@ class ComposedMessage:
         text: The message text, which is the fallback Slack shows in notifications,
             search results and plain clients when the message also carries blocks.
         blocks: The Block Kit blocks, or None for a plain text message.
-        format: How the body was composed, one of "mrkdwn" or "blocks".
+        format: How the body was composed, one of "mrkdwn", "markdown" or "blocks".
     """
 
     text: str
@@ -255,17 +271,42 @@ def check_blocks(blocks: list[dict[str, Any]]) -> None:
         )
 
 
-def compose_message(body: str | None, *, blocks: list[dict[str, Any]] | None = None) -> ComposedMessage:
+def _shortened(text: str) -> str:
+    """Cut a derived fallback text down to what Slack accepts as message text.
+
+    Args:
+        text: The rendered fallback text.
+
+    Returns:
+        The text, shortened with an ellipsis when it is over the limit.
+    """
+    if len(text) <= PLAIN_TEXT_LIMIT:
+        return text
+    return text[: PLAIN_TEXT_LIMIT - 1] + "…"
+
+
+def compose_message(
+    body: str | None,
+    *,
+    blocks: list[dict[str, Any]] | None = None,
+    format: str = MessageFormat.auto,
+) -> ComposedMessage:
     """Turn a message body into the text and blocks to hand to the Slack API.
+
+    A body that is written in Markdown becomes rich text blocks, so that code gets
+    highlighting, lists become real lists and links carry their label. By default that
+    is decided by looking at the body; "markdown" and "mrkdwn" force the decision.
 
     A message that carries blocks always carries a fallback text as well, because that
     is what Slack shows in notifications, in search results and in clients that cannot
-    render blocks. When no body is given, or the body is blank, the fallback is rendered
-    from the blocks and shortened if that rendering is longer than a message may be.
+    render blocks. It is derived from the content when the caller gave none, and
+    shortened if that rendering is longer than a message may be.
 
     Args:
         body: The message text, or None when the content comes from blocks alone.
-        blocks: Block Kit blocks to send instead of plain text.
+        blocks: Block Kit blocks to send instead of a text body. Takes precedence over
+            the format, since the caller built the content itself.
+        format: One of "auto", "markdown" or "mrkdwn".
 
     Returns:
         The composed message.
@@ -280,9 +321,7 @@ def compose_message(body: str | None, *, blocks: list[dict[str, Any]] | None = N
         # A derived fallback is shortened to fit; one the caller wrote is rejected instead,
         # because silently cutting text somebody typed would hide part of their message.
         if body is None or not body.strip():
-            text = render_blocks(blocks, {}, {})
-            if len(text) > PLAIN_TEXT_LIMIT:
-                text = text[: PLAIN_TEXT_LIMIT - 1] + "…"
+            text = _shortened(render_blocks(blocks, {}, {}))
         elif len(body) > PLAIN_TEXT_LIMIT:
             raise ComposeError(
                 f"Fallback text is {len(body)} characters. Slack caps the text of a message at "
@@ -295,5 +334,14 @@ def compose_message(body: str | None, *, blocks: list[dict[str, Any]] | None = N
         return ComposedMessage(text=text, blocks=blocks, format="blocks")
 
     text = body or ""
+
+    if format == MessageFormat.markdown or (format == MessageFormat.auto and looks_like_markdown(text)):
+        converted = markdown_to_blocks(text)
+        if converted:
+            check_blocks(converted)
+            # The body itself is the fallback text. It is shortened rather than refused
+            # because the blocks carry all of it; only the notification preview is cut.
+            return ComposedMessage(text=_shortened(text), blocks=converted, format="markdown")
+
     check_plain_text_length(text)
     return ComposedMessage(text=text, blocks=None, format="mrkdwn")

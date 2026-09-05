@@ -320,3 +320,73 @@ class TestComposeMessage:
     def test_block_limits_are_enforced(self) -> None:
         with pytest.raises(ComposeError):
             compose_message(None, blocks=[{"type": "divider"}] * (MAX_BLOCKS + 1))
+
+
+class TestComposeMessageFormat:
+    """Tests for how compose_message() decides between Markdown and plain mrkdwn."""
+
+    MARKDOWN = "Look at **this**\n\n- one\n- two"
+    MRKDWN = "*bold* and <https://example.com|a link>"
+
+    def test_auto_detects_markdown(self) -> None:
+        composed = compose_message(self.MARKDOWN)
+
+        assert composed.format == "markdown"
+        assert composed.blocks is not None
+        assert composed.blocks[0]["type"] == "rich_text"
+
+    def test_auto_leaves_mrkdwn_alone(self) -> None:
+        """A plain Slack message must go out exactly as it was written."""
+        composed = compose_message(self.MRKDWN)
+
+        assert composed.format == "mrkdwn"
+        assert composed.blocks is None
+        assert composed.text == self.MRKDWN
+
+    def test_markdown_is_forced(self) -> None:
+        composed = compose_message(self.MRKDWN, format="markdown")
+
+        assert composed.format == "markdown"
+        assert composed.blocks is not None
+
+    def test_mrkdwn_is_forced(self) -> None:
+        composed = compose_message(self.MARKDOWN, format="mrkdwn")
+
+        assert composed.format == "mrkdwn"
+        assert composed.blocks is None
+        assert composed.text == self.MARKDOWN
+
+    def test_the_body_stays_the_fallback_text(self) -> None:
+        composed = compose_message(self.MARKDOWN)
+
+        assert composed.text == self.MARKDOWN
+
+    def test_long_markdown_keeps_its_blocks_and_shortens_the_fallback(self) -> None:
+        """Rich text holds far more than a plain message, so only the fallback is cut."""
+        body = "**bold**\n\n" + "y" * (PLAIN_TEXT_LIMIT + 500)
+
+        composed = compose_message(body)
+
+        assert composed.format == "markdown"
+        assert len(composed.text) == PLAIN_TEXT_LIMIT
+        assert composed.text.endswith("…")
+
+    def test_converted_output_is_checked_against_the_block_limits(self) -> None:
+        body = "**bold**\n\n" + "y" * (RICH_TEXT_LIMIT + 1)
+
+        with pytest.raises(ComposeError) as excinfo:
+            compose_message(body)
+
+        assert "rich text" in str(excinfo.value)
+
+    def test_markdown_that_converts_to_nothing_falls_back_to_plain(self) -> None:
+        composed = compose_message("```\n```", format="markdown")
+
+        assert composed.format == "mrkdwn"
+        assert composed.blocks is None
+
+    def test_blocks_take_precedence_over_the_format(self) -> None:
+        composed = compose_message(self.MARKDOWN, blocks=[rich_text_block("hi")], format="markdown")
+
+        assert composed.format == "blocks"
+        assert composed.blocks == [rich_text_block("hi")]

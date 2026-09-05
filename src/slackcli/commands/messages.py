@@ -15,6 +15,7 @@ from ..blocks import get_message_body_text
 from ..compose import (
     ComposedMessage,
     ComposeError,
+    MessageFormat,
     compose_message,
     load_blocks,
     preview_removal_update,
@@ -623,6 +624,13 @@ def send_message(
             help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
         ),
     ] = None,
+    message_format: Annotated[
+        MessageFormat,
+        typer.Option(
+            "--format",
+            help="How to read the message body: auto detects Markdown, markdown forces it, mrkdwn sends it as is.",
+        ),
+    ] = MessageFormat.auto,
     files: Annotated[
         list[Path] | None,
         typer.Option(
@@ -688,7 +696,7 @@ def send_message(
     # Compose the message before anything is posted, so limits fail here and not in Slack
     composed = None
     if message or blocks_path is not None:
-        composed = compose_or_exit(message, blocks_path)
+        composed = compose_or_exit(message, blocks_path, message_format)
 
     # Get org context
     ctx = get_context()
@@ -758,12 +766,17 @@ def send_message(
         raise typer.Exit(1) from None
 
 
-def compose_or_exit(message: str | None, blocks_path: str | None) -> ComposedMessage:
+def compose_or_exit(
+    message: str | None,
+    blocks_path: str | None,
+    message_format: MessageFormat = MessageFormat.auto,
+) -> ComposedMessage:
     """Compose a message body and blocks, reporting a composition error and exiting.
 
     Args:
         message: The message text, or None when the content comes from blocks alone.
         blocks_path: Path to a JSON file with blocks, "-" for stdin, or None.
+        message_format: How to read the body: auto, markdown or mrkdwn.
 
     Returns:
         The composed message.
@@ -773,7 +786,7 @@ def compose_or_exit(message: str | None, blocks_path: str | None) -> ComposedMes
     """
     try:
         blocks = load_blocks(blocks_path) if blocks_path is not None else None
-        return compose_message(message, blocks=blocks)
+        return compose_message(message, blocks=blocks, format=message_format)
     except ComposeError as e:
         error_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None
@@ -853,6 +866,13 @@ def edit_message(
             help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
         ),
     ] = None,
+    message_format: Annotated[
+        MessageFormat,
+        typer.Option(
+            "--format",
+            help="How to read the message body: auto detects Markdown, markdown forces it, mrkdwn sends it as is.",
+        ),
+    ] = MessageFormat.auto,
     remove_link_previews: Annotated[
         bool,
         typer.Option(
@@ -899,7 +919,7 @@ def edit_message(
 
     composed = None
     if message is not None or blocks_path is not None:
-        composed = compose_or_exit(message, blocks_path)
+        composed = compose_or_exit(message, blocks_path, message_format)
     elif not remove_link_previews:
         error_console.print(
             "[red]New message text or --blocks is required unless --remove-link-previews is given.[/red]"

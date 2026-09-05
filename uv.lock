@@ -168,6 +168,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
+    { name = "markdown-it-py" },
     { name = "rich" },
     { name = "slack-sdk" },
     { name = "tomli" },
@@ -183,6 +184,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "certifi", specifier = ">=2024.0.0" },
+    { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "rich", specifier = ">=14.3.2" },
     { name = "slack-sdk", specifier = ">=3.39.0" },
     { name = "tomli", specifier = ">=2.4.0" },

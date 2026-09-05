@@ -257,6 +257,34 @@ Messages with file attachments will show the file name, size, and download URL.
 
 `--remove-link-previews` drops the previews Slack and other apps unfurled into a message. The message text is optional there: without it the message keeps the content it has and only loses the previews. The removal sticks — a link left in the text is not unfurled again — although a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back at all: only deleting the message and posting it again restores it. Use `--thread <parent ts>` when the message is a thread reply and you are not passing new text, because a reply cannot be found without knowing its thread.
 
+#### Message formatting
+
+Message bodies are written in Markdown. When a body looks like Markdown, it is converted to Slack rich text before it is sent: `**bold**`, `~~strike~~`, `` `code` ``, `-` and `1.` lists (nested ones included), ```` ```sql ```` fences with syntax highlighting, `>` quotes, `[label](url)` links and `#` headings, which render bold. A Markdown table becomes a monospace block, because Slack has no table element, so its columns stay aligned.
+
+```bash
+slack messages send '#general' "$(cat <<'EOF'
+## Deploy report
+
+Shipped **v2.4.0**, see [the release](https://example.com/releases/2.4.0).
+
+- migrations: none
+- rollback: `git revert abc123`
+EOF
+)"
+```
+
+Slack's own syntax keeps working inside a Markdown body, and is still the only way to write a mention: `<@U0123456789>`, `<#C0123456789|general>`, `<!here>`, `<!subteam^S0123456|@backend>`, `:white_check_mark:` and `<https://example.com|labelled link>`. Any other `<...>` form, such as `<#G0123456>` or `<!date^1234567890^{date}>`, is sent as literal text. Slack syntax inside a code fence or a backtick span is left exactly as written.
+
+`--format` decides how the body is read:
+
+| Value | Meaning |
+|-------|---------|
+| `auto` (default) | Markdown when the body carries a Markdown signal, otherwise sent as it stands |
+| `markdown` | Always convert, even when the body has no obvious signal |
+| `mrkdwn` | Never convert: the body goes out in Slack's own mrkdwn, exactly as today |
+
+Detection only reacts to syntax the two dialects do not share, so a plain Slack message with `*bold*`, `_italic_` or `<url|label>` is never mistaken for Markdown. Mind the difference when you write one: `*x*` is bold in mrkdwn but italic in Markdown. `send`, `edit` and `scheduled create` all take `--format`, and report the path taken in `--json` as `"format": "markdown" | "mrkdwn" | "blocks"`. Anything the converter cannot express is what `--blocks` is for.
+
 #### Sending rich blocks
 
 ```bash

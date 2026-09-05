@@ -8,6 +8,7 @@ from typing import Annotated, Any
 import typer
 from slack_sdk.errors import SlackApiError
 
+from ..compose import MessageFormat
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -179,6 +180,13 @@ def create_scheduled(
             help="Path to a JSON file with Block Kit blocks, or - to read them from stdin.",
         ),
     ] = None,
+    message_format: Annotated[
+        MessageFormat,
+        typer.Option(
+            "--format",
+            help="How to read the message body: auto detects Markdown, markdown forces it, mrkdwn sends it as is.",
+        ),
+    ] = MessageFormat.auto,
     thread: Annotated[
         str | None,
         typer.Option(
@@ -231,7 +239,7 @@ def create_scheduled(
         raise typer.Exit(1)
 
     # Compose the message before anything is scheduled, so limits fail here and not in Slack
-    composed = compose_or_exit(message, blocks_path)
+    composed = compose_or_exit(message, blocks_path, message_format)
 
     # Get org context
     ctx = get_context()
