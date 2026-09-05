@@ -650,14 +650,26 @@ class SlackCli:
         self,
         channel_id: str,
         ts: str,
-        text: str,
+        text: str | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+        clear_attachments: bool = False,
     ) -> dict[str, Any]:
         """Edit an existing message in a channel.
+
+        Only the content that is given is sent: text alone replaces the message with
+        plain text, blocks alone replace it with rich content, and both together set
+        the rich content plus the fallback text Slack uses for notifications and search.
+        Slack rejects a text over 4000 characters with msg_too_long even when blocks
+        carry the real content, which is why the preview-removal path drops the stored
+        fallback text once it is longer than that.
 
         Args:
             channel_id: The channel ID.
             ts: The timestamp of the message to edit.
-            text: The new message text.
+            text: The new message text, if the message is being replaced with text.
+            blocks: The new Block Kit blocks, if the message is being replaced with blocks.
+            clear_attachments: Whether to drop the message's attachments, which is what
+                removes link previews (Slack's own unfurls and the ones apps posted).
 
         Returns:
             The API response data including the updated message.
@@ -665,12 +677,20 @@ class SlackCli:
         Raises:
             SlackApiError: If the API call fails.
         """
-        logger.debug(f"Editing message {ts} in {channel_id}")
-        response = self.client.chat_update(
-            channel=channel_id,
-            ts=ts,
-            text=text,
-        )
+        kwargs: dict[str, Any] = {
+            "channel": channel_id,
+            "ts": ts,
+        }
+
+        if text is not None:
+            kwargs["text"] = text
+        if blocks is not None:
+            kwargs["blocks"] = blocks
+        if clear_attachments:
+            kwargs["attachments"] = []
+
+        logger.debug(f"Editing message {ts} in {channel_id}" + (" (clearing attachments)" if clear_attachments else ""))
+        response = self.client.chat_update(**kwargs)
         self._check_response(response, "Edit message")
 
         return {

@@ -12,7 +12,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..blocks import get_message_body_text
-from ..compose import ComposeError, check_plain_text_length
+from ..compose import ComposeError, check_plain_text_length, preview_removal_update
 from ..context import get_context
 from ..errors import format_error_with_hint
 from ..logging import console, error_console, get_logger
@@ -756,6 +756,53 @@ def send_message(
         raise typer.Exit(1) from None
 
 
+def _reload_message_content(
+    slack: SlackCli,
+    channel_id: str,
+    channel_name: str,
+    timestamp: str,
+    thread: str | None,
+) -> dict[str, Any]:
+    """Load a message so its own content can be posted again without its attachments.
+
+    Args:
+        slack: The Slack client.
+        channel_id: The channel the message lives in.
+        channel_name: The channel name, for error messages.
+        timestamp: The timestamp of the message to reload.
+        thread: The parent thread timestamp, if the message is a thread reply.
+
+    Returns:
+        Keyword arguments for SlackCli.edit_message().
+
+    Raises:
+        typer.Exit: If the message cannot be found or its content cannot be re-posted.
+    """
+    if thread:
+        fetched = slack.get_thread_reply(channel_id, thread, timestamp)
+    else:
+        fetched = slack.get_message(channel_id, timestamp)
+
+    if fetched is None:
+        error_console.print(f"[red]Message {timestamp} not found in #{channel_name}.[/red]")
+        raise typer.Exit(1)
+
+    # conversations.history answers with the nearest channel message, never a thread reply,
+    # so a different ts means the message is not in the channel history under this timestamp
+    if fetched.get("ts") != timestamp:
+        error_console.print(
+            f"[red]Message {timestamp} was not found as a channel message: it is either a thread reply "
+            f"(pass --thread <parent ts>) or the timestamp does not exist in this channel.[/red]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        return preview_removal_update(fetched)
+    except ComposeError as e:
+        error_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+
+
 @app.command("edit")
 def edit_message(
     channel: Annotated[
@@ -771,11 +818,26 @@ def edit_message(
         ),
     ],
     message: Annotated[
-        str,
+        str | None,
         typer.Argument(
-            help="New message text.",
+            help="New message text. Optional with --remove-link-previews.",
         ),
-    ],
+    ] = None,
+    remove_link_previews: Annotated[
+        bool,
+        typer.Option(
+            "--remove-link-previews",
+            help="Drop the link previews from the message. Cannot be undone.",
+        ),
+    ] = False,
+    thread: Annotated[
+        str | None,
+        typer.Option(
+            "--thread",
+            "-t",
+            help="Parent thread timestamp, needed to find a thread reply when no new text is given.",
+        ),
+    ] = None,
     output_json_flag: Annotated[
         bool,
         typer.Option(
@@ -786,20 +848,34 @@ def edit_message(
 ) -> None:
     """Edit an existing message in a Slack channel.
 
+    With --remove-link-previews the message text is optional: the message is re-posted
+    as it stands, without the previews Slack and other apps unfurled into it. The
+    removal sticks — a link left in the text is not unfurled again — though a later
+    edit that changes the links may produce a fresh preview. A preview an app posted
+    (Linear, GitHub, ...) cannot be brought back at all except by deleting the message
+    and posting it again.
+
     Examples:
         slack messages edit '#general' 1234567890.123456 "Updated message"
         slack messages edit C0123456789 1234567890.123456 "Fixed typo"
+        slack messages edit '#general' 1234567890.123456 --remove-link-previews
+        slack messages edit '#general' 1234567890.123456 --remove-link-previews --thread 1234567890.000001
     """
     # Validate message text
-    if not message.strip():
-        error_console.print("[red]Message text cannot be empty.[/red]")
-        raise typer.Exit(1)
+    if message is None:
+        if not remove_link_previews:
+            error_console.print("[red]Message text is required unless --remove-link-previews is given.[/red]")
+            raise typer.Exit(1)
+    else:
+        if not message.strip():
+            error_console.print("[red]Message text cannot be empty.[/red]")
+            raise typer.Exit(1)
 
-    try:
-        check_plain_text_length(message)
-    except ComposeError as e:
-        error_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1) from None
+        try:
+            check_plain_text_length(message)
+        except ComposeError as e:
+            error_console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1) from None
 
     # Get org context
     ctx = get_context()
@@ -812,14 +888,32 @@ def edit_message(
     # Edit message
     try:
         if not output_json_flag:
-            console.print(f"[dim]Editing message {timestamp} in #{channel_name}...[/dim]")
+            if message is None:
+                console.print(f"[dim]Removing link previews from message {timestamp} in #{channel_name}...[/dim]")
+            else:
+                console.print(f"[dim]Editing message {timestamp} in #{channel_name}...[/dim]")
 
-        result = slack.edit_message(channel_id, timestamp, message)
+        if message is None:
+            update = _reload_message_content(slack, channel_id, channel_name, timestamp, thread)
+            result = slack.edit_message(channel_id, timestamp, **update)
+        else:
+            result = slack.edit_message(
+                channel_id,
+                timestamp,
+                text=message,
+                clear_attachments=remove_link_previews,
+            )
+
+        if remove_link_previews:
+            result["attachments_removed"] = True
 
         if output_json_flag:
             output_json(result)
         else:
-            console.print("[green]Message edited successfully.[/green]")
+            if message is not None:
+                console.print("[green]Message edited successfully.[/green]")
+            if remove_link_previews:
+                console.print("[green]Link previews removed.[/green]")
             console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:

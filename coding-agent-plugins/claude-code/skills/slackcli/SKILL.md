@@ -170,7 +170,18 @@ slack messages send '#channel' "Message" --json              # Returns message t
 ```bash
 slack messages edit '#channel' 1234567890.123456 "Updated message"
 slack messages edit '#channel' 1234567890.123456 "Updated" --json
+
+# Drop the link previews, keeping the message as it is
+slack messages edit '#channel' 1234567890.123456 --remove-link-previews
+
+# Same, for a message that is a thread reply
+slack messages edit '#channel' 1234567890.123456 --remove-link-previews --thread 1234567890.000001
+
+# Change the text and drop the previews in one edit
+slack messages edit '#channel' 1234567890.123456 "Updated message" --remove-link-previews
 ```
+
+`--remove-link-previews` deletes the previews Slack and other apps unfurled into the message. Without new text the message keeps its content and only loses the previews. The removal sticks — a link left in the text is not unfurled again — though a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back except by deleting the message and posting it again. `--thread <parent ts>` is needed to find a thread reply when no new text is given.
 
 ### Delete Messages
 

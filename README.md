@@ -237,6 +237,15 @@ slack messages send '#general' --file ./a.csv --file ./b.csv
 # Edit an existing message
 slack messages edit '#general' 1234567890.123456 "Updated message"
 
+# Remove the link previews from a message, keeping its content
+slack messages edit '#general' 1234567890.123456 --remove-link-previews
+
+# Same for a thread reply (--thread locates it)
+slack messages edit '#general' 1234567890.123456 --remove-link-previews --thread 1234567890.000001
+
+# Change the text and remove the previews in one edit
+slack messages edit '#general' 1234567890.123456 "Updated message" --remove-link-previews
+
 # Delete a message (with confirmation prompt)
 slack messages delete '#general' 1234567890.123456
 
@@ -245,6 +254,8 @@ slack messages delete '#general' 1234567890.123456 --force
 ```
 
 Messages with file attachments will show the file name, size, and download URL.
+
+`--remove-link-previews` drops the previews Slack and other apps unfurled into a message. The message text is optional there: without it the message keeps the content it has and only loses the previews. The removal sticks — a link left in the text is not unfurled again — although a later edit that changes the links may produce a fresh preview. A preview an app posted (Linear, GitHub, ...) cannot be brought back at all: only deleting the message and posting it again restores it. Use `--thread <parent ts>` when the message is a thread reply and you are not passing new text, because a reply cannot be found without knowing its thread.
 
 #### Limits
 
