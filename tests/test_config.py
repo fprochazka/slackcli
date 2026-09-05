@@ -167,3 +167,40 @@ class TestNotFoundMessage:
         assert "Organization 'unknown' not found." in message
         assert "acme (workspaces: acme-eng)" in message
         assert "globex" in message
+
+
+class TestAgentSignature:
+    """Tests for the top-level 'agent_signature' key."""
+
+    def test_defaults_to_marketing(self, tmp_path: Path) -> None:
+        config = load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
+
+        assert config.agent_signature == "marketing"
+
+    def test_each_mode_is_accepted(self, tmp_path: Path) -> None:
+        for mode in ("off", "plain", "marketing"):
+            content = f'agent_signature = "{mode}"\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+            config = load_config(write_config(tmp_path, content))
+
+            assert config.agent_signature == mode
+
+    def test_case_and_spacing_are_forgiven(self, tmp_path: Path) -> None:
+        content = 'agent_signature = "  Marketing "\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+
+        config = load_config(write_config(tmp_path, content))
+
+        assert config.agent_signature == "marketing"
+
+    def test_invalid_value_is_refused(self, tmp_path: Path) -> None:
+        content = 'agent_signature = "loud"\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+
+        with pytest.raises(ValueError) as excinfo:
+            load_config(write_config(tmp_path, content))
+
+        assert str(excinfo.value) == "Invalid 'agent_signature': expected one of off, plain, marketing"
+
+    def test_a_value_that_is_not_a_string_is_refused(self, tmp_path: Path) -> None:
+        content = 'agent_signature = 3\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+
+        with pytest.raises(ValueError):
+            load_config(write_config(tmp_path, content))

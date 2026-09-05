@@ -352,3 +352,5 @@ Get user/channel IDs from `--json` output or `slack users get`. Other `<...>` fo
 `send`, `edit` and `scheduled create` all report which path was taken in `--json` as `"format": "markdown" | "mrkdwn" | "blocks"`.
 
 A message is at most 4000 characters, and a longer one is refused before it reaches Slack: split it yourself, for example into a thread. Rich text holds more than that, so a long Markdown body still posts — only the notification preview is shortened.
+
+Messages you send are signed automatically with a small grey footer naming the agent ("— sent from Claude Code"), so never write a "sent by Claude" line of your own. The user turns it off with `agent_signature = "off"` in their config.

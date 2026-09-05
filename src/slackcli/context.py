@@ -18,13 +18,21 @@ class Context:
     org_name: str | None = None
     verbose: bool = False
 
-    def get_org(self) -> "OrgConfig":
-        """Get the selected organization config."""
+    def get_config(self) -> "Config":
+        """Get the configuration, loading it on first use.
+
+        Returns:
+            The parsed configuration.
+        """
         from .config import load_config
 
         if self.config is None:
             self.config = load_config(self.config_path)
-        return self.config.get_org(self.org_name)
+        return self.config
+
+    def get_org(self) -> "OrgConfig":
+        """Get the selected organization config."""
+        return self.get_config().get_org(self.org_name)
 
     def get_token(self) -> str:
         """Get the token for the selected organization."""

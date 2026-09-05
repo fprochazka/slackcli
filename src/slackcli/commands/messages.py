@@ -30,6 +30,7 @@ from ..output import (
     output_messages_text,
     output_thread_text,
 )
+from ..signature import resolve_signature
 from ..time_utils import parse_time_spec
 
 if TYPE_CHECKING:
@@ -773,6 +774,11 @@ def compose_or_exit(
 ) -> ComposedMessage:
     """Compose a message body and blocks, reporting a composition error and exiting.
 
+    Every command that writes new content goes through here, so the signature footer is
+    resolved here too and no command can forget it. Content that is only being re-posted
+    as it stands, such as the --remove-link-previews path, does not come through here and
+    is therefore never signed again.
+
     Args:
         message: The message text, or None when the content comes from blocks alone.
         blocks_path: Path to a JSON file with blocks, "-" for stdin, or None.
@@ -784,9 +790,11 @@ def compose_or_exit(
     Raises:
         typer.Exit: If the blocks cannot be read, or the message exceeds a Slack limit.
     """
+    signature = resolve_signature(get_context().get_config().agent_signature)
+
     try:
         blocks = load_blocks(blocks_path) if blocks_path is not None else None
-        return compose_message(message, blocks=blocks, format=message_format)
+        return compose_message(message, blocks=blocks, format=message_format, signature=signature)
     except ComposeError as e:
         error_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None

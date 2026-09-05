@@ -5,6 +5,8 @@ from pathlib import Path
 
 import tomli
 
+from .signature import SIGNATURE_MODES
+
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "slackcli" / "config.toml"
 
 
@@ -25,6 +27,8 @@ class Config:
     default_org: str | None = None
     # Workspace name -> org key.
     workspace_index: dict[str, str] = field(default_factory=dict)
+    # How messages sent from an AI agent are signed: off, plain or marketing.
+    agent_signature: str = "marketing"
 
     def describe_orgs(self) -> str:
         """Describe the configured orgs and their workspace names.
@@ -128,6 +132,27 @@ def _build_workspace_index(orgs: dict[str, OrgConfig]) -> dict[str, str]:
     return index
 
 
+def _parse_agent_signature(data: dict) -> str:
+    """Read the optional top-level 'agent_signature' key.
+
+    Args:
+        data: The parsed config file.
+
+    Returns:
+        The configured mode, lower-cased and trimmed, or the default when the key is
+        absent.
+
+    Raises:
+        ValueError: If the value is not one of the known modes.
+    """
+    mode = data.get("agent_signature", "marketing")
+    if isinstance(mode, str):
+        mode = mode.strip().lower()
+    if mode not in SIGNATURE_MODES:
+        raise ValueError(f"Invalid 'agent_signature': expected one of {', '.join(SIGNATURE_MODES)}")
+    return mode
+
+
 def load_config(config_path: Path | None = None) -> Config:
     """Load configuration from TOML file.
 
@@ -156,6 +181,7 @@ def load_config(config_path: Path | None = None) -> Config:
 
     config = Config()
     config.default_org = data.get("default_org")
+    config.agent_signature = _parse_agent_signature(data)
 
     orgs_data = data.get("orgs", {})
     for org_name, org_data in orgs_data.items():

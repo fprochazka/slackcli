@@ -47,12 +47,33 @@ Create a configuration file at `~/.config/slackcli/config.toml`:
 # Default organization (optional)
 default_org = "myworkspace"
 
+# How messages from an AI agent are signed (optional, default "marketing")
+agent_signature = "marketing"  # off | plain | marketing
+
 [orgs.myworkspace]
 token = "xoxp-your-user-token-here"
 
 [orgs.another-workspace]
 token = "xoxp-another-token"
 ```
+
+### Agent signature
+
+Messages sent by an AI coding agent carry a small grey footer naming it, so a reader can tell them from what a person wrote:
+
+```
+— sent from Claude Code
+```
+
+```toml
+agent_signature = "marketing"  # off | plain | marketing
+```
+
+`marketing` (the default) links the agent's name to this project, `plain` prints the name alone, and `off` never signs anything. The footer is a `context` block, which Slack never unfurls, and it is added only when the CLI is running under an agent: a person typing the same command signs nothing.
+
+Detection reads the environment variables the known harnesses set — Claude Code, Gemini CLI, Codex, Cursor, Cline, OpenCode, Goose, Antigravity, Augment, Junie, Kimi Code, Grok Build, OpenClaw, Trae, Pi — plus the generic `AGENT=<slug>` and `AI_AGENT=<slug>`, and the file Devin leaves behind. Harnesses that announce nothing (GitHub Copilot, Aider, Windsurf, Warp) are not guessed at. `src/slackcli/signature.py` holds the table and is the one place to extend.
+
+Signing turns a plain message into a section block plus the footer, so a signed message reads exactly like an unsigned one with a line of grey type under it. A body too long for a single section keeps its plain form and takes the footer as a trailing italic line instead.
 
 ### Workspaces
 

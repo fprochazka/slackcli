@@ -20,6 +20,7 @@ from slackcli.compose import (
     load_blocks,
     preview_removal_update,
 )
+from slackcli.signature import Signature
 
 
 class TestCheckPlainTextLength:
@@ -390,3 +391,104 @@ class TestComposeMessageFormat:
 
         assert composed.format == "blocks"
         assert composed.blocks == [rich_text_block("hi")]
+
+
+class TestComposeMessageSignature:
+    """Tests for the agent signature footer."""
+
+    FOOTER = Signature(agent="Claude Code", mode="marketing")
+    FOOTER_BLOCK = FOOTER.block()
+
+    def test_plain_body_becomes_a_section_plus_the_footer(self) -> None:
+        """Variant B: the body reads as a normal message with grey type under it."""
+        composed = compose_message("Hello there", signature=self.FOOTER)
+
+        assert composed.format == "mrkdwn"
+        assert composed.text == "Hello there"
+        assert composed.blocks == [
+            {"type": "section", "text": {"type": "mrkdwn", "text": "Hello there"}},
+            self.FOOTER_BLOCK,
+        ]
+
+    def test_markdown_body_keeps_its_rich_text_and_gains_the_footer(self) -> None:
+        composed = compose_message("Look at **this**", signature=self.FOOTER)
+
+        assert composed.format == "markdown"
+        assert composed.blocks is not None
+        assert composed.blocks[0]["type"] == "rich_text"
+        assert composed.blocks[-1] == self.FOOTER_BLOCK
+
+    def test_raw_blocks_gain_the_footer(self) -> None:
+        composed = compose_message(None, blocks=[rich_text_block("hi")], signature=self.FOOTER)
+
+        assert composed.format == "blocks"
+        assert composed.blocks == [rich_text_block("hi"), self.FOOTER_BLOCK]
+
+    def test_derived_fallback_text_excludes_the_footer(self) -> None:
+        """The footer is not part of what the author wrote, so it stays out of the preview."""
+        composed = compose_message(None, blocks=[rich_text_block("hi")], signature=self.FOOTER)
+
+        assert composed.text == "hi"
+
+    def test_a_body_too_long_for_a_section_is_signed_with_a_trailing_line(self) -> None:
+        body = "y" * (SECTION_TEXT_LIMIT + 1)
+
+        composed = compose_message(body, signature=self.FOOTER)
+
+        assert composed.blocks is None
+        assert composed.format == "mrkdwn"
+        assert composed.text == f"{body}\n\n_{self.FOOTER.mrkdwn()}_"
+
+    def test_a_trailing_line_signature_counts_towards_the_plain_limit(self) -> None:
+        with pytest.raises(ComposeError):
+            compose_message("y" * PLAIN_TEXT_LIMIT, signature=self.FOOTER)
+
+    def test_the_footer_counts_towards_the_block_limit(self) -> None:
+        blocks = [{"type": "divider"}] * MAX_BLOCKS
+
+        with pytest.raises(ComposeError) as excinfo:
+            compose_message(None, blocks=blocks, signature=self.FOOTER)
+
+        assert f"at most {MAX_BLOCKS}" in str(excinfo.value)
+
+    def test_without_a_signature_nothing_changes(self) -> None:
+        """A human's plain message must go out exactly as it did before signing existed."""
+        composed = compose_message("Hello there")
+
+        assert composed.blocks is None
+        assert composed.text == "Hello there"
+
+    def test_malformed_blocks_are_named_not_crashed_on(self) -> None:
+        """The blocks are checked before anything tries to render them."""
+        with pytest.raises(ComposeError) as excinfo:
+            compose_message(None, blocks=[1, 2], signature=self.FOOTER)
+
+        assert "Block 0 is int" in str(excinfo.value)
+
+    def test_a_body_the_signature_pushes_over_the_limit_says_so(self) -> None:
+        """The reported length is what the user typed, not the signed total."""
+        footer_length = len(f"\n\n_{self.FOOTER.mrkdwn()}_")
+        body = "y" * (PLAIN_TEXT_LIMIT - footer_length + 1)
+
+        with pytest.raises(ComposeError) as excinfo:
+            compose_message(body, signature=self.FOOTER)
+
+        message = str(excinfo.value)
+        assert f"Message is {len(body)} characters" in message
+        assert f"signature adds {footer_length}" in message
+        assert 'agent_signature = "off"' in message
+
+    def test_a_body_that_still_fits_with_the_signature_passes(self) -> None:
+        footer_length = len(f"\n\n_{self.FOOTER.mrkdwn()}_")
+        body = "y" * (PLAIN_TEXT_LIMIT - footer_length)
+
+        composed = compose_message(body, signature=self.FOOTER)
+
+        assert len(composed.text) == PLAIN_TEXT_LIMIT
+        assert composed.blocks is None
+
+    def test_an_empty_body_is_not_signed(self) -> None:
+        composed = compose_message("", signature=self.FOOTER)
+
+        assert composed.blocks is None
+        assert composed.text == ""

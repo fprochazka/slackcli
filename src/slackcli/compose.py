@@ -15,6 +15,7 @@ from typing import Any
 
 from .blocks import render_blocks
 from .markdown import looks_like_markdown, markdown_to_blocks
+from .signature import Signature
 
 # Slack splits a plain text message longer than this into several posts on
 # chat.postMessage, and rejects it outright on chat.update (msg_too_long).
@@ -285,11 +286,27 @@ def _shortened(text: str) -> str:
     return text[: PLAIN_TEXT_LIMIT - 1] + "…"
 
 
+def _signed(blocks: list[dict[str, Any]], signature: Signature | None) -> list[dict[str, Any]]:
+    """Append the signature footer to a list of blocks.
+
+    Args:
+        blocks: The blocks carrying the message content.
+        signature: The footer to append, or None to leave the blocks alone.
+
+    Returns:
+        The blocks, with the footer as their last block.
+    """
+    if signature is None:
+        return blocks
+    return [*blocks, signature.block()]
+
+
 def compose_message(
     body: str | None,
     *,
     blocks: list[dict[str, Any]] | None = None,
     format: str = MessageFormat.auto,
+    signature: Signature | None = None,
 ) -> ComposedMessage:
     """Turn a message body into the text and blocks to hand to the Slack API.
 
@@ -302,20 +319,27 @@ def compose_message(
     render blocks. It is derived from the content when the caller gave none, and
     shortened if that rendering is longer than a message may be.
 
+    A signature turns even a plain message into blocks, because the footer is a block:
+    the body becomes a section and the footer follows it. A body too long for a section
+    keeps its plain form and takes the footer as a trailing italic line instead.
+
     Args:
         body: The message text, or None when the content comes from blocks alone.
         blocks: Block Kit blocks to send instead of a text body. Takes precedence over
             the format, since the caller built the content itself.
         format: One of "auto", "markdown" or "mrkdwn".
+        signature: Footer naming the agent the message was sent from, if any.
 
     Returns:
         The composed message.
 
     Raises:
         ComposeError: If the body is too long, or the blocks are malformed or exceed a
-            Slack limit.
+            Slack limit. The footer counts towards the block limit.
     """
     if blocks is not None:
+        # Checked before anything reads the blocks, so malformed input is named rather
+        # than crashing the renderer; the signed list is checked again further down
         check_blocks(blocks)
 
         # A derived fallback is shortened to fit; one the caller wrote is rejected instead,
@@ -331,17 +355,38 @@ def compose_message(
         else:
             text = body
 
-        return ComposedMessage(text=text, blocks=blocks, format="blocks")
+        signed = _signed(blocks, signature)
+        check_blocks(signed)
+        return ComposedMessage(text=text, blocks=signed, format="blocks")
 
     text = body or ""
 
     if format == MessageFormat.markdown or (format == MessageFormat.auto and looks_like_markdown(text)):
         converted = markdown_to_blocks(text)
         if converted:
-            check_blocks(converted)
+            signed = _signed(converted, signature)
+            check_blocks(signed)
             # The body itself is the fallback text. It is shortened rather than refused
             # because the blocks carry all of it; only the notification preview is cut.
-            return ComposedMessage(text=_shortened(text), blocks=converted, format="markdown")
+            return ComposedMessage(text=_shortened(text), blocks=signed, format="markdown")
+
+    # An empty body carries no message, so there is nothing to sign
+    if signature is not None and text.strip():
+        if len(text) <= SECTION_TEXT_LIMIT:
+            # The body fits a section block, so the footer can sit under it in small grey type
+            signed = _signed([{"type": "section", "text": {"type": "mrkdwn", "text": text}}], signature)
+            check_blocks(signed)
+            return ComposedMessage(text=text, blocks=signed, format="mrkdwn")
+
+        # Too long for a section: keep it plain and sign it with a trailing line
+        signed_text = f"{text}\n\n_{signature.mrkdwn()}_"
+        if len(signed_text) > PLAIN_TEXT_LIMIT:
+            raise ComposeError(
+                f"Message is {len(text)} characters and the agent signature adds "
+                f"{len(signed_text) - len(text)}, which is over the {PLAIN_TEXT_LIMIT}-character limit. "
+                'Shorten it, or set agent_signature = "off".'
+            )
+        text = signed_text
 
     check_plain_text_length(text)
     return ComposedMessage(text=text, blocks=None, format="mrkdwn")

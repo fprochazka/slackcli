@@ -151,6 +151,7 @@ def show_config() -> None:
 
     config_display = {
         "default_org": config.default_org,
+        "agent_signature": config.agent_signature,
         "orgs": {
             name: {
                 "token": org.token[:20] + "..." if len(org.token) > 20 else org.token,
