@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from slackcli.config import load_config
+from slackcli.config import AGENT_SIGNATURE_ENV_VAR, load_config
+
+
+@pytest.fixture(autouse=True)
+def clear_agent_signature_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep an ambient SLACK_AGENT_SIGNATURE out of every test in this module."""
+    monkeypatch.delenv(AGENT_SIGNATURE_ENV_VAR, raising=False)
 
 
 def write_config(tmp_path: Path, content: str) -> Path:
@@ -204,3 +210,58 @@ class TestAgentSignature:
 
         with pytest.raises(ValueError):
             load_config(write_config(tmp_path, content))
+
+
+class TestAgentSignatureEnvVar:
+    """Tests for the SLACK_AGENT_SIGNATURE environment variable."""
+
+    def test_env_var_overrides_the_config_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The variable wins over the key in the file."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "off")
+        content = 'agent_signature = "marketing"\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+
+        config = load_config(write_config(tmp_path, content))
+
+        assert config.agent_signature == "off"
+
+    def test_env_var_applies_without_the_key(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The variable applies when the file names no mode."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "plain")
+
+        config = load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
+
+        assert config.agent_signature == "plain"
+
+    def test_case_and_spacing_are_forgiven(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The value is trimmed and lower-cased like the file value is."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "  PLAIN  ")
+
+        config = load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
+
+        assert config.agent_signature == "plain"
+
+    def test_invalid_value_is_refused(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An unknown mode is refused, and the message names the variable."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "loud")
+
+        with pytest.raises(ValueError) as excinfo:
+            load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
+
+        assert str(excinfo.value) == "Invalid SLACK_AGENT_SIGNATURE: expected one of off, plain, marketing"
+
+    def test_empty_value_leaves_the_file_in_charge(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An exported but empty variable is not an error and does not override."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "")
+        content = 'agent_signature = "plain"\n[orgs.globex]\ntoken = "xoxp-fake-2"\n'
+
+        config = load_config(write_config(tmp_path, content))
+
+        assert config.agent_signature == "plain"
+
+    def test_blank_value_falls_back_to_the_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A whitespace-only variable counts as absent, so the default stands."""
+        monkeypatch.setenv(AGENT_SIGNATURE_ENV_VAR, "   ")
+
+        config = load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
+
+        assert config.agent_signature == "marketing"

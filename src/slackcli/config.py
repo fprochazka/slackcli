@@ -1,5 +1,6 @@
 """Configuration management for Slack CLI."""
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,6 +9,9 @@ import tomli
 from .signature import SIGNATURE_MODES
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "slackcli" / "config.toml"
+
+# Overrides the top-level 'agent_signature' key of the config file.
+AGENT_SIGNATURE_ENV_VAR = "SLACK_AGENT_SIGNATURE"
 
 
 @dataclass
@@ -132,25 +136,46 @@ def _build_workspace_index(orgs: dict[str, OrgConfig]) -> dict[str, str]:
     return index
 
 
+def _validate_signature_mode(value: object, source: str) -> str:
+    """Normalise and check one agent signature mode.
+
+    Args:
+        value: The raw value, from the environment or from the config file.
+        source: How the value is named in the error message.
+
+    Returns:
+        The mode, lower-cased and trimmed when it is a string.
+
+    Raises:
+        ValueError: If the value is not one of the known modes.
+    """
+    mode = value.strip().lower() if isinstance(value, str) else value
+    if mode not in SIGNATURE_MODES:
+        raise ValueError(f"Invalid {source}: expected one of {', '.join(SIGNATURE_MODES)}")
+    return str(mode)
+
+
 def _parse_agent_signature(data: dict) -> str:
-    """Read the optional top-level 'agent_signature' key.
+    """Read the agent signature mode from the environment, then from the config file.
+
+    SLACK_AGENT_SIGNATURE wins over the top-level 'agent_signature' key. A variable that
+    is unset, empty or whitespace-only counts as absent, so exporting an empty value
+    leaves the config file in charge.
 
     Args:
         data: The parsed config file.
 
     Returns:
-        The configured mode, lower-cased and trimmed, or the default when the key is
-        absent.
+        The mode, lower-cased and trimmed, or the default when neither source sets one.
 
     Raises:
-        ValueError: If the value is not one of the known modes.
+        ValueError: If either value is not one of the known modes.
     """
-    mode = data.get("agent_signature", "marketing")
-    if isinstance(mode, str):
-        mode = mode.strip().lower()
-    if mode not in SIGNATURE_MODES:
-        raise ValueError(f"Invalid 'agent_signature': expected one of {', '.join(SIGNATURE_MODES)}")
-    return mode
+    from_env = os.environ.get(AGENT_SIGNATURE_ENV_VAR)
+    if from_env is not None and from_env.strip():
+        return _validate_signature_mode(from_env, AGENT_SIGNATURE_ENV_VAR)
+
+    return _validate_signature_mode(data.get("agent_signature", "marketing"), "'agent_signature'")
 
 
 def load_config(config_path: Path | None = None) -> Config:

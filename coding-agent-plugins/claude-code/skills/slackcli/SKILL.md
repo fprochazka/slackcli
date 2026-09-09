@@ -344,7 +344,7 @@ Get user/channel IDs from `--json` output or `slack users get`. Other `<...>` fo
 
 **Length.** A message is at most 4000 characters and a longer one is refused before it reaches Slack: split it, for example into a thread. Rich text holds more, so a long Markdown body still posts — only the notification preview is shortened.
 
-**Signature.** Messages sent from a coding agent get a small grey footer ("— sent from Claude Code") automatically, so never write a "sent by Claude" line of your own. The user turns it off with `agent_signature = "off"` in their config.
+**Signature.** Messages sent from a coding agent get a small grey footer ("— sent from Claude Code") automatically, so never write a "sent by Claude" line of your own. The user turns it off with `agent_signature = "off"` in their config. `SLACK_AGENT_SIGNATURE=off|plain|marketing` overrides that key for one command.
 
 ## Additional Resources
 

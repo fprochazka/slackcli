@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 
 from . import __version__
-from .config import Config, get_config_path, load_config
+from .config import AGENT_SIGNATURE_ENV_VAR, Config, get_config_path, load_config
 from .context import get_context
 from .logging import console, error_console, get_logger, setup_logging
 
@@ -178,6 +178,10 @@ def show_config() -> None:
         console.print(f"[dim]Using default org: {_describe_selection(config, config.default_org)}[/dim]")
     else:
         console.print("[dim]No org selected (use --org or SLACK_ORG)[/dim]")
+
+    env_signature = os.environ.get(AGENT_SIGNATURE_ENV_VAR)
+    if env_signature and env_signature.strip():
+        console.print(f"[dim]Using agent_signature from {AGENT_SIGNATURE_ENV_VAR}: {config.agent_signature}[/dim]")
 
 
 def _hoist_global_options(argv: list[str]) -> list[str]:

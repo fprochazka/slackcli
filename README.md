@@ -69,7 +69,7 @@ Messages sent by an AI coding agent carry a small grey footer naming it, so a re
 agent_signature = "marketing"  # off | plain | marketing
 ```
 
-`marketing` (the default) links the agent's name to this project, `plain` prints the name alone, and `off` never signs anything. The footer is a `context` block, which Slack never unfurls, and it is added only when the CLI is running under an agent: a person typing the same command signs nothing.
+`marketing` (the default) links the agent's name to this project, `plain` prints the name alone, and `off` never signs anything. `SLACK_AGENT_SIGNATURE` takes the same three values and wins over the config key, so one command or one shell can sign differently. An unset or empty variable leaves the config file in charge. The footer is a `context` block, which Slack never unfurls, and it is added only when the CLI is running under an agent: a person typing the same command signs nothing.
 
 Detection reads the environment variables the known harnesses set — Claude Code, Gemini CLI, Codex, Cursor, Cline, OpenCode, Goose, Antigravity, Augment, Junie, Kimi Code, Grok Build, OpenClaw, Trae, Pi — plus the generic `AGENT=<slug>` and `AI_AGENT=<slug>`, and the file Devin leaves behind. Harnesses that announce nothing (GitHub Copilot, Aider, Windsurf, Warp) are not guessed at. `src/slackcli/signature.py` holds the table and is the one place to extend.
 
@@ -132,6 +132,7 @@ slack --help                       # Show help
 |----------|-------------|
 | `SLACK_ORG` | Default organization name (alternative to `--org`) |
 | `SLACK_CONFIG` | Path to config file (alternative to `--config`) |
+| `SLACK_AGENT_SIGNATURE` | How messages from an AI agent are signed: `off`, `plain` or `marketing`; overrides the `agent_signature` config key |
 
 ```bash
 # Using environment variables
