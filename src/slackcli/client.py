@@ -614,6 +614,7 @@ class SlackCli:
         text: str,
         thread_ts: str | None = None,
         blocks: list[dict[str, Any]] | None = None,
+        reply_broadcast: bool = False,
     ) -> dict[str, Any]:
         """Send a message to a channel.
 
@@ -623,6 +624,7 @@ class SlackCli:
                 notifications, in search results and in clients that cannot render them.
             thread_ts: Optional thread timestamp to reply to.
             blocks: Optional Block Kit blocks carrying the message content.
+            reply_broadcast: Also post the thread reply to the channel.
 
         Returns:
             The API response data including the message timestamp.
@@ -637,6 +639,8 @@ class SlackCli:
 
         if thread_ts:
             kwargs["thread_ts"] = thread_ts
+        if reply_broadcast:
+            kwargs["reply_broadcast"] = True
         if blocks is not None:
             kwargs["blocks"] = blocks
 

@@ -243,6 +243,7 @@ slack messages send 'U0123456789' "Hello by user ID"
 
 # Reply in a thread
 slack messages send '#general' --thread 1234567890.123456 "Reply in thread"
+slack messages send '#general' --thread 1234567890.123456 --broadcast "Reply also sent to the channel"
 
 # Read message from stdin
 echo "Hello" | slack messages send '#general' --stdin

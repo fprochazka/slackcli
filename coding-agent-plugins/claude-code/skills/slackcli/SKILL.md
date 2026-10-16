@@ -161,6 +161,7 @@ Write the body in ordinary Markdown — the CLI converts it to Slack's formattin
 slack messages send '#channel' "Hello world"
 slack messages send '@john.doe' "Hello via DM"
 slack messages send '#channel' --thread 1234567890.123456 "Reply in thread"
+slack messages send '#channel' --thread 1234567890.123456 --broadcast "Reply also sent to the channel"
 slack messages send '#channel' --file ./report.pdf           # Upload file
 slack messages send '#channel' "Here's the report" --file ./report.pdf
 slack messages send '#channel' "Message" --json              # Returns message timestamp

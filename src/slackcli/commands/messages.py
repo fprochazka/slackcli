@@ -611,6 +611,13 @@ def send_message(
             help="Thread timestamp to reply to.",
         ),
     ] = None,
+    broadcast: Annotated[
+        bool,
+        typer.Option(
+            "--broadcast",
+            help="Also send the thread reply to the channel. Requires --thread.",
+        ),
+    ] = False,
     stdin: Annotated[
         bool,
         typer.Option(
@@ -666,6 +673,7 @@ def send_message(
         slack messages send '#general' "Hello world"
         slack messages send '@john.doe' "Hello via DM"
         slack messages send '#general' --thread 1234567890.123456 "Reply in thread"
+        slack messages send '#general' --thread 1234567890.123456 --broadcast "Reply also sent to channel"
         echo "Hello" | slack messages send '#general' --stdin
         slack messages send '#general' --file ./report.pdf
         slack messages send '#general' "Here's the report" --file ./report.pdf
@@ -674,6 +682,16 @@ def send_message(
     """
     # Validate message input
     has_files = files and len(files) > 0
+
+    if broadcast and not thread:
+        error_console.print("[red]--broadcast requires --thread.[/red]")
+        raise typer.Exit(1)
+
+    if broadcast and has_files:
+        error_console.print(
+            "[red]--broadcast cannot be combined with --file: Slack does not broadcast file uploads.[/red]"
+        )
+        raise typer.Exit(1)
 
     if stdin and blocks_path is not None:
         error_console.print("[red]Cannot use both --stdin and --blocks. Only one of them can read stdin.[/red]")
@@ -727,11 +745,14 @@ def send_message(
         if composed:
             if not output_json_flag:
                 if thread:
-                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}...[/dim]")
+                    also = " (also to channel)" if broadcast else ""
+                    console.print(f"[dim]Sending reply to thread {thread} in {display_name}{also}...[/dim]")
                 else:
                     console.print(f"[dim]Sending message to {display_name}...[/dim]")
 
-            msg_result = slack.send_message(channel_id, composed.text, thread_ts=thread, blocks=composed.blocks)
+            msg_result = slack.send_message(
+                channel_id, composed.text, thread_ts=thread, blocks=composed.blocks, reply_broadcast=broadcast
+            )
             results["message"] = msg_result
             results["format"] = composed.format
 
