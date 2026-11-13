@@ -190,19 +190,19 @@ class TestSlackTokens:
     """Tests for Slack's mentions and emoji inside Markdown."""
 
     def test_user_mention(self) -> None:
-        elements = convert("**hi** <@U08GTCPJW95>")
+        elements = convert("**hi** <@U0123456789>")
 
-        assert elements[0]["elements"][-1] == {"type": "user", "user_id": "U08GTCPJW95"}
+        assert elements[0]["elements"][-1] == {"type": "user", "user_id": "U0123456789"}
 
     def test_user_mention_with_a_label(self) -> None:
-        elements = convert("**hi** <@U08GTCPJW95|filip>")
+        elements = convert("**hi** <@U0123456789|alice>")
 
-        assert elements[0]["elements"][-1] == {"type": "user", "user_id": "U08GTCPJW95"}
+        assert elements[0]["elements"][-1] == {"type": "user", "user_id": "U0123456789"}
 
     def test_channel_mention(self) -> None:
-        elements = convert("**see** <#C0142QHKYAV|general>")
+        elements = convert("**see** <#C0123456789|general>")
 
-        assert elements[0]["elements"][-1] == {"type": "channel", "channel_id": "C0142QHKYAV"}
+        assert elements[0]["elements"][-1] == {"type": "channel", "channel_id": "C0123456789"}
 
     def test_broadcast(self) -> None:
         elements = convert("**heads up** <!here>")
@@ -259,10 +259,10 @@ class TestSlackTokens:
         assert texts(elements[0]["elements"]) == "at 10:30:45 today"
 
     def test_tokens_keep_the_surrounding_style(self) -> None:
-        elements = convert("**hi <@U08GTCPJW95> there**")
+        elements = convert("**hi <@U0123456789> there**")
 
         assert elements[0]["elements"][0]["style"] == {"bold": True}
-        assert elements[0]["elements"][1] == {"type": "user", "user_id": "U08GTCPJW95"}
+        assert elements[0]["elements"][1] == {"type": "user", "user_id": "U0123456789"}
 
 
 class TestLists:
@@ -565,7 +565,7 @@ from orders;
 |-----|-------|
 | dev |     1 |
 
-Ping <@U08GTCPJW95> in <#C0142QHKYAV|general> :white_check_mark:
+Ping <@U0123456789> in <#C0123456789|general> :white_check_mark:
 """
 
     def test_element_sequence(self) -> None:

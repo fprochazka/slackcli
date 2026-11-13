@@ -12,36 +12,36 @@ class TestParseSlackUrl:
 
     def test_basic_message_url(self) -> None:
         """Test parsing a basic message URL."""
-        url = "https://example.slack.com/archives/C09D1VBRJ76/p1769432401438239"
+        url = "https://example.slack.com/archives/C0123456789/p1234567892345678"
         result = parse_slack_url(url)
 
         assert result.kind == "message"
-        assert result.channel_id == "C09D1VBRJ76"
-        assert result.message_ts == "1769432401.438239"
+        assert result.channel_id == "C0123456789"
+        assert result.message_ts == "1234567892.345678"
         assert result.thread_ts is None
         assert result.is_thread_reply is False
         assert result.workspace == "example"
 
     def test_thread_reply_url(self) -> None:
         """Test parsing a thread reply URL."""
-        url = "https://example.slack.com/archives/C09D1VBRJ76/p1769422824936319?thread_ts=1769420875.054379&cid=C09D1VBRJ76"
+        url = "https://example.slack.com/archives/C0123456789/p1234567891234567?thread_ts=1234567890.123456&cid=C0123456789"
         result = parse_slack_url(url)
 
-        assert result.channel_id == "C09D1VBRJ76"
-        assert result.message_ts == "1769422824.936319"
-        assert result.thread_ts == "1769420875.054379"
+        assert result.channel_id == "C0123456789"
+        assert result.message_ts == "1234567891.234567"
+        assert result.thread_ts == "1234567890.123456"
         assert result.is_thread_reply is True
         assert result.workspace == "example"
 
     def test_thread_parent_url_with_thread_ts(self) -> None:
         """Test parsing a thread parent URL that includes thread_ts pointing to itself."""
         # When thread_ts equals message_ts, it's the parent, not a reply
-        url = "https://example.slack.com/archives/C09D1VBRJ76/p1769420875054379?thread_ts=1769420875.054379"
+        url = "https://example.slack.com/archives/C0123456789/p1234567890123456?thread_ts=1234567890.123456"
         result = parse_slack_url(url)
 
-        assert result.channel_id == "C09D1VBRJ76"
-        assert result.message_ts == "1769420875.054379"
-        assert result.thread_ts == "1769420875.054379"
+        assert result.channel_id == "C0123456789"
+        assert result.message_ts == "1234567890.123456"
+        assert result.thread_ts == "1234567890.123456"
         assert result.is_thread_reply is False  # Same ts, so it's the parent
 
     def test_different_workspaces(self) -> None:
@@ -58,7 +58,7 @@ class TestParseSlackUrl:
 
     def test_different_channel_ids(self) -> None:
         """Test parsing URLs with different channel ID formats."""
-        channel_ids = ["C0123456789", "C09D1VBRJ76", "CABCDEFGH", "C1234567890"]
+        channel_ids = ["C0123456789", "C0987654321", "CABCDEFGH", "C1234567890"]
 
         for channel_id in channel_ids:
             url = f"https://example.slack.com/archives/{channel_id}/p1000000000000000"
@@ -68,7 +68,7 @@ class TestParseSlackUrl:
     def test_timestamp_conversion(self) -> None:
         """Test that timestamp is correctly converted from URL format."""
         test_cases = [
-            ("p1769432401438239", "1769432401.438239"),
+            ("p1234567892345678", "1234567892.345678"),
             ("p1000000000000000", "1000000000.000000"),
             ("p1234567890123456", "1234567890.123456"),
         ]
@@ -117,19 +117,19 @@ class TestParseSlackUrl:
 
     def test_url_with_extra_query_params(self) -> None:
         """Test that extra query params don't affect parsing."""
-        url = "https://example.slack.com/archives/C09D1VBRJ76/p1769422824936319?thread_ts=1769420875.054379&cid=C09D1VBRJ76&extra=ignored"
+        url = "https://example.slack.com/archives/C0123456789/p1234567891234567?thread_ts=1234567890.123456&cid=C0123456789&extra=ignored"
         result = parse_slack_url(url)
 
-        assert result.channel_id == "C09D1VBRJ76"
-        assert result.message_ts == "1769422824.936319"
-        assert result.thread_ts == "1769420875.054379"
+        assert result.channel_id == "C0123456789"
+        assert result.message_ts == "1234567891.234567"
+        assert result.thread_ts == "1234567890.123456"
 
     def test_url_with_only_cid_query_param(self) -> None:
         """Test URL with cid but no thread_ts."""
-        url = "https://example.slack.com/archives/C09D1VBRJ76/p1769432401438239?cid=C09D1VBRJ76"
+        url = "https://example.slack.com/archives/C0123456789/p1234567892345678?cid=C0123456789"
         result = parse_slack_url(url)
 
-        assert result.channel_id == "C09D1VBRJ76"
+        assert result.channel_id == "C0123456789"
         assert result.thread_ts is None
         assert result.is_thread_reply is False
 
@@ -173,12 +173,12 @@ class TestParseConversationUrl:
 
     def test_bare_archives_url_with_thread_ts(self) -> None:
         """Test that thread_ts on an archives URL points at the thread root."""
-        result = parse_slack_url("https://example.slack.com/archives/C123?thread_ts=1769420875.054379")
+        result = parse_slack_url("https://example.slack.com/archives/C123?thread_ts=1234567890.123456")
 
         assert result.kind == "message"
         assert result.channel_id == "C123"
-        assert result.message_ts == "1769420875.054379"
-        assert result.thread_ts == "1769420875.054379"
+        assert result.message_ts == "1234567890.123456"
+        assert result.thread_ts == "1234567890.123456"
         assert result.is_thread_reply is False
 
     def test_legacy_messages_url(self) -> None:
@@ -209,25 +209,25 @@ class TestParseUserUrl:
 
     def test_team_url(self) -> None:
         """Test parsing a /team/ user URL."""
-        result = parse_slack_url("https://example.slack.com/team/U08GTCPJW95")
+        result = parse_slack_url("https://example.slack.com/team/U0123456789")
 
         assert result.kind == "user"
-        assert result.user_id == "U08GTCPJW95"
+        assert result.user_id == "U0123456789"
         assert result.workspace == "example"
 
     def test_team_url_with_w_prefix(self) -> None:
         """Test parsing an enterprise user ID that starts with W."""
-        result = parse_slack_url("https://example.slack.com/team/W08GTCPJW95")
+        result = parse_slack_url("https://example.slack.com/team/W0123456789")
 
         assert result.kind == "user"
-        assert result.user_id == "W08GTCPJW95"
+        assert result.user_id == "W0123456789"
 
     def test_team_url_trailing_slash(self) -> None:
         """Test that a trailing slash is tolerated."""
-        result = parse_slack_url("https://example.slack.com/team/U08GTCPJW95/")
+        result = parse_slack_url("https://example.slack.com/team/U0123456789/")
 
         assert result.kind == "user"
-        assert result.user_id == "U08GTCPJW95"
+        assert result.user_id == "U0123456789"
 
 
 class TestParseFileUrl:
@@ -235,7 +235,7 @@ class TestParseFileUrl:
 
     def test_file_url_with_name(self) -> None:
         """Test parsing a file URL that carries the file name."""
-        result = parse_slack_url("https://example.slack.com/files/U08GTCPJW95/F0123456789/report.pdf")
+        result = parse_slack_url("https://example.slack.com/files/U0123456789/F0123456789/report.pdf")
 
         assert result.kind == "file"
         assert result.file_id == "F0123456789"
@@ -243,7 +243,7 @@ class TestParseFileUrl:
 
     def test_file_url_without_name(self) -> None:
         """Test parsing a file URL without the file name."""
-        result = parse_slack_url("https://example.slack.com/files/U08GTCPJW95/F0123456789")
+        result = parse_slack_url("https://example.slack.com/files/U0123456789/F0123456789")
 
         assert result.kind == "file"
         assert result.file_id == "F0123456789"
@@ -254,20 +254,20 @@ class TestParseClientUrl:
 
     def test_client_conversation_url(self) -> None:
         """Test parsing a web client conversation URL."""
-        result = parse_slack_url("https://app.slack.com/client/T0123456/C09D1VBRJ76")
+        result = parse_slack_url("https://app.slack.com/client/T0123456/C0123456789")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C09D1VBRJ76"
+        assert result.channel_id == "C0123456789"
         assert result.workspace is None
 
     def test_client_thread_url(self) -> None:
         """Test parsing a web client thread URL."""
         result = parse_slack_url(
-            "https://app.slack.com/client/T0123456/C09D1VBRJ76/thread/C09D1VBRJ76-1234567890.123456"
+            "https://app.slack.com/client/T0123456/C0123456789/thread/C0123456789-1234567890.123456"
         )
 
         assert result.kind == "message"
-        assert result.channel_id == "C09D1VBRJ76"
+        assert result.channel_id == "C0123456789"
         assert result.message_ts == "1234567890.123456"
         assert result.thread_ts == "1234567890.123456"
         assert result.is_thread_reply is False
@@ -281,7 +281,7 @@ class TestParseClientUrl:
 
     def test_client_url_trailing_slash(self) -> None:
         """Test that a trailing slash is tolerated."""
-        result = parse_slack_url("https://app.slack.com/client/T0123456/C09D1VBRJ76/")
+        result = parse_slack_url("https://app.slack.com/client/T0123456/C0123456789/")
 
         assert result.kind == "conversation"
-        assert result.channel_id == "C09D1VBRJ76"
+        assert result.channel_id == "C0123456789"

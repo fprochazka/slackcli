@@ -6,9 +6,9 @@ Slack uses special macro syntax in message text:
 
 | Macro | Description | Example |
 |-------|-------------|---------|
-| `<@U123>` | User mention | `<@U08GTCPJW95>` |
-| `<#C123>` | Channel mention | `<#C09D1VBRJ76>` |
-| `<#C123\|name>` | Channel with name | `<#C09D1VBRJ76\|general>` |
+| `<@U123>` | User mention | `<@U0123456789>` |
+| `<#C123>` | Channel mention | `<#C0123456789>` |
+| `<#C123\|name>` | Channel with name | `<#C0123456789\|general>` |
 | `<!here>` | @here mention | |
 | `<!channel>` | @channel mention | |
 | `<!everyone>` | @everyone mention | |
@@ -128,11 +128,11 @@ https://{workspace}.slack.com/archives/{channel_id}/p{timestamp_no_dot}
 
 Example:
 ```
-https://myworkspace.slack.com/archives/C09D1VBRJ76/p1769432401438239
+https://myworkspace.slack.com/archives/C0123456789/p1234567892345678
 ```
 
-- `C09D1VBRJ76` = channel ID
-- `p1769432401438239` = timestamp with dot removed (`1769432401.438239`)
+- `C0123456789` = channel ID
+- `p1234567892345678` = timestamp with dot removed (`1234567892.345678`)
 
 ### Thread Reply
 
@@ -142,7 +142,7 @@ https://{workspace}.slack.com/archives/{channel_id}/p{message_ts}?thread_ts={par
 
 Example:
 ```
-https://myworkspace.slack.com/archives/C09D1VBRJ76/p1769422824936319?thread_ts=1769420875.054379&cid=C09D1VBRJ76
+https://myworkspace.slack.com/archives/C0123456789/p1234567891234567?thread_ts=1234567890.123456&cid=C0123456789
 ```
 
 ### URL Parsing
@@ -151,7 +151,7 @@ To convert URL timestamp to API timestamp:
 
 ```python
 def url_ts_to_api_ts(url_ts: str) -> str:
-    """Convert p1769432401438239 to 1769432401.438239"""
+    """Convert p1234567892345678 to 1234567892.345678"""
     ts = url_ts.lstrip('p')
     # Insert dot before last 6 digits
     return f"{ts[:-6]}.{ts[-6:]}"

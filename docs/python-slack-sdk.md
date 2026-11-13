@@ -69,7 +69,7 @@ for msg in response["messages"]:
 ```python
 response = client.conversations_replies(
     channel="C123456789",
-    ts="1769420875.054379",  # Parent message timestamp
+    ts="1234567890.123456",  # Parent message timestamp
     limit=100
 )
 
