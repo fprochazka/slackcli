@@ -115,6 +115,8 @@ slack messages list '#channel' --reactions=names          # Show who reacted
 slack messages list C0123456789 --json                    # Channel ID, JSON output
 ```
 
+Each message in `--json` also carries `bot_id`, `bot_name`, `username` (a webhook's free-text name; `user_name` stays a handle and is `null` for such a post), `subtype`, and the thread summary `reply_users_count`, `reply_user_ids` (raw `U…`/`B…` IDs, not resolved) and `latest_reply` (ts of the newest reply). Every key is always present, `null`/`0`/`[]` when empty.
+
 With `--with-threads`, a thread whose replies could not be loaded carries `"replies_error": "<slack error code>"` instead of `replies`; the rest of the output is complete, and the command still exits non-zero (75 when the cause was a rate limit).
 
 ### Paginating Further

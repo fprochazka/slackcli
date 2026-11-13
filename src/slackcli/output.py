@@ -53,6 +53,26 @@ def format_user_name(user_name: str | None, user_id: str | None = None) -> str:
     return name
 
 
+def format_message_author(msg: Message) -> str:
+    """Format the author of a message for display.
+
+    A message posted by a user shows its handle with the ``@`` prefix. A message with no user, such as a webhook
+    ``bot_message``, shows the bot's ``username``, or else its ``bot_profile`` name, without the ``@``, because
+    that name is free text and not a handle that can be fed back to the CLI.
+
+    Args:
+        msg: The message whose author to format.
+
+    Returns:
+        The author as shown in text output.
+    """
+    if not msg.user_id and not msg.user_name:
+        bot_display_name = msg.username or msg.bot_name
+        if bot_display_name:
+            return bot_display_name
+    return format_user_name(msg.user_name, msg.user_id)
+
+
 def format_message_text(text: str, indent: str = "  ") -> str:
     """Format message text with indentation.
 
@@ -195,8 +215,7 @@ def _output_message_text(
     text_indent = base_indent + "  "
 
     # Build the header line
-    user_name = format_user_name(msg.user_name, msg.user_id)
-    print(f"{base_indent}{msg.datetime_str}  {user_name}")
+    print(f"{base_indent}{msg.datetime_str}  {format_message_author(msg)}")
 
     # Print message text (or file attachments if no text)
     text = msg.display_text
@@ -216,10 +235,12 @@ def _output_message_text(
     # Print metadata line (replies, reactions)
     meta_parts = []
     if msg.reply_count > 0:
-        if with_threads and msg.replies:
-            meta_parts.append(f"[{msg.reply_count} replies]")
-        else:
-            meta_parts.append(f"[{msg.reply_count} replies, thread_ts={msg.ts}]")
+        thread_parts = [f"{msg.reply_count} replies"]
+        if msg.latest_reply_str:
+            thread_parts.append(f"last reply {msg.latest_reply_str}")
+        if not (with_threads and msg.replies):
+            thread_parts.append(f"thread_ts={msg.ts}")
+        meta_parts.append(f"[{', '.join(thread_parts)}]")
 
     reactions_str = format_reactions(msg.reactions, reactions_mode)
     if reactions_str:
@@ -259,13 +280,12 @@ def output_thread_text(
     if output.thread_parent_omitted and output.omitted_parent is not None:
         parent = output.omitted_parent
         replies = list(messages)
-        placeholder_user = format_user_name(parent.user_name, parent.user_id)
+        placeholder_user = format_message_author(parent)
         print(f"{parent.datetime_str}  {placeholder_user} [thread root message omitted -- use --head to see it]")
     elif messages:
         parent = messages[0]
         replies = list(messages[1:])
-        user_name = format_user_name(parent.user_name, parent.user_id)
-        print(f"{parent.datetime_str}  {user_name} [parent]")
+        print(f"{parent.datetime_str}  {format_message_author(parent)} [parent]")
         print(format_message_text(parent.display_text))
 
         files_str = format_files(parent.files, indent="  ")
@@ -282,8 +302,7 @@ def output_thread_text(
 
     # Display replies (indented)
     for reply in replies:
-        user_name = format_user_name(reply.user_name, reply.user_id)
-        print(f"  {reply.datetime_str}  {user_name}")
+        print(f"  {reply.datetime_str}  {format_message_author(reply)}")
         print(format_message_text(reply.display_text, indent="    "))
 
         files_str = format_files(reply.files, indent="    ")
@@ -329,8 +348,7 @@ def output_resolved_message_text(resolved: ResolvedMessage) -> None:
 
     # Display the message
     msg = resolved.message
-    user_name = format_user_name(msg.user_name, msg.user_id)
-    print(f"{msg.datetime_str}  {user_name}")
+    print(f"{msg.datetime_str}  {format_message_author(msg)}")
     print(format_message_text(msg.display_text))
 
     files_str = format_files(msg.files)
