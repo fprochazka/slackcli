@@ -9,6 +9,16 @@ from slack_sdk.errors import SlackApiError
 
 from .logging import error_console
 
+# Exit code for a command that failed because Slack rate-limited a call (EX_TEMPFAIL from sysexits.h).
+# Every other Slack API error exits with 1.
+EXIT_RATE_LIMITED = 75
+
+RATE_LIMIT_ERROR_CODES = frozenset({"ratelimited", "rate_limited"})
+RATE_LIMIT_HINT = (
+    "Slack kept rate-limiting this call after the automatic retries ran out. "
+    "Wait at least the Retry-After time, then run the command again."
+)
+
 # Mapping of Slack API error codes to helpful hint messages
 ERROR_HINTS: dict[str, str] = {
     # Authentication errors
@@ -55,8 +65,8 @@ ERROR_HINTS: dict[str, str] = {
     "already_scheduled": "This message has already been scheduled.",
     "invalid_time": "The scheduled time is not valid.",
     # Rate limiting
-    "ratelimited": "Rate limit exceeded. The request will be retried automatically.",
-    "rate_limited": "Rate limit exceeded. The request will be retried automatically.",
+    "ratelimited": RATE_LIMIT_HINT,
+    "rate_limited": RATE_LIMIT_HINT,
     # Permission errors
     "missing_scope": "The token is missing required OAuth scopes. Check your Slack app at https://api.slack.com/apps.",
     "restricted_action": "This action is restricted by workspace admins.",
@@ -136,16 +146,50 @@ def format_error_with_hint(error: SlackApiError, context: dict[str, str] | None 
     if hint and context and error_code == "invalid_name" and "emoji" in context:
         hint = f"'{context['emoji']}' is not a valid emoji name."
 
-    # Handle rate limit with Retry-After header
-    if error_code in ("ratelimited", "rate_limited"):
-        retry_after = error.response.headers.get("Retry-After", "unknown")
-        hint = f"Rate limit exceeded. Try again in {retry_after} seconds."
-
     return f"Slack API error: {error_code}", hint
+
+
+def get_retry_after(error: SlackApiError) -> str | None:
+    """Read the Retry-After header from the response of a failed call.
+
+    The header name is matched case-insensitively, because it arrives as "Retry-After" or "retry-after"
+    depending on the HTTP client and protocol version.
+
+    Args:
+        error: The SlackApiError exception.
+
+    Returns:
+        The header value, or None when the response carries no Retry-After header.
+    """
+    headers = getattr(error.response, "headers", None) or {}
+    for name, value in headers.items():
+        if name.lower() == "retry-after":
+            if isinstance(value, list):
+                value = value[0] if value else None
+            return str(value) if value is not None else None
+    return None
+
+
+def get_api_method(error: SlackApiError) -> str | None:
+    """Name the Slack API method whose call failed, such as "conversations.history".
+
+    Args:
+        error: The SlackApiError exception.
+
+    Returns:
+        The method name taken from the request URL, or None when the response does not carry the URL.
+    """
+    api_url = getattr(error.response, "api_url", None)
+    if not api_url:
+        return None
+    return api_url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or None
 
 
 def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: str = "") -> NoReturn:
     """Print a Slack API error and its hint on stderr, then exit the command.
+
+    A rate-limit error also prints the Retry-After value and the API method on a line of its own,
+    and exits with EXIT_RATE_LIMITED. Every other error exits with 1.
 
     Args:
         error: The SlackApiError raised by the API call.
@@ -157,6 +201,17 @@ def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: st
     """
     error_msg, hint = format_error_with_hint(error, context)
     error_console.print(f"[red]{prefix}{error_msg}[/red]")
+
+    exit_code = 1
+    if get_error_code(error) in RATE_LIMIT_ERROR_CODES:
+        retry_after = get_retry_after(error)
+        retry_text = f"{retry_after}s" if retry_after is not None else "unknown"
+        method = get_api_method(error) or "unknown"
+        # One plain, unwrapped line, so a script can parse it from stderr.
+        retry_line = f"Retry-After: {retry_text} (method: {method})"
+        error_console.print(retry_line, markup=False, highlight=False, soft_wrap=True)
+        exit_code = EXIT_RATE_LIMITED
+
     if hint:
         error_console.print(f"[dim]Hint: {hint}[/dim]")
-    raise typer.Exit(1) from None
+    raise typer.Exit(exit_code) from None

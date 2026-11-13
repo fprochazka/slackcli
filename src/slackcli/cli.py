@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from slack_sdk.errors import SlackApiError
 
 from . import __version__
 from .config import AGENT_SIGNATURE_ENV_VAR, Config, get_config_path, load_config
 from .context import get_context
+from .errors import fail
 from .logging import console, error_console, get_logger, setup_logging
 
 app = typer.Typer(
@@ -230,6 +232,12 @@ def cli() -> None:
     try:
         sys.argv[1:] = _hoist_global_options(sys.argv[1:])
         app()
+    except SlackApiError as e:
+        # A Slack call outside any command's own handler: report it the same way, with the same exit code.
+        try:
+            fail(e)
+        except typer.Exit as exit_:
+            sys.exit(exit_.exit_code)
     except Exception as e:
         error_console.print(f"[red]Error: {e}[/red]")
         if _ctx.verbose:

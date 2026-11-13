@@ -143,6 +143,22 @@ slack conversations list
 SLACK_ORG=myworkspace slack conversations list
 ```
 
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Any other failure, such as a Slack API error or a missing config |
+| `2` | Usage error reported by the argument parser, such as an unknown option or a missing argument |
+| `75` | Slack kept rate-limiting a call after the automatic retries ran out |
+
+Errors go to stderr, also under `--json`: no error object is ever written to stdout. A rate-limit failure adds one line that a script can parse, naming how long Slack asked to wait and the API method that was limited:
+
+```
+Slack API error: ratelimited
+Retry-After: 30s (method: conversations.history)
+```
+
 ### Conversations
 
 ```bash
