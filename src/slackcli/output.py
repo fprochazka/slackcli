@@ -141,11 +141,17 @@ def _format_has_more_footer(output: MessagesOutput, is_thread: bool = False) -> 
     else:
         before_label = "older"
         after_label = "newer"
+    # Repeat the window, so following a cursor stays inside it
+    window = ""
+    if output.since:
+        window += f" --since {output.since}"
+    if output.until:
+        window += f" --until {output.until}"
     parts = []
     if output.has_more_before and output.next_before_ts:
-        parts.append(f"{before_label}: --before {output.next_before_ts}")
+        parts.append(f"{before_label}: --before {output.next_before_ts}{window}")
     if output.has_more_after and output.next_after_ts:
-        parts.append(f"{after_label}: --after {output.next_after_ts}")
+        parts.append(f"{after_label}: --after {output.next_after_ts}{window}")
     if not parts:
         return None
     return f"[{' | '.join(parts)}]"

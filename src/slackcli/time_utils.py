@@ -244,3 +244,21 @@ def parse_future_time(spec: str) -> datetime:
         pass
 
     raise ValueError(f"Cannot parse time specification: {spec}")
+
+
+def format_time_spec(value: datetime) -> str:
+    """Format a datetime as a UTC time spec that parse_time_spec reads back exactly.
+
+    Args:
+        value: The datetime; a naive one counts as UTC.
+
+    Returns:
+        A string such as "2024-01-15T10:30:00Z", with microseconds when they are not zero.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    value = value.astimezone(UTC)
+    text = value.strftime("%Y-%m-%dT%H:%M:%S")
+    if value.microsecond:
+        text += f".{value.microsecond:06d}"
+    return text + "Z"

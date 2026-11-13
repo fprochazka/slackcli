@@ -261,11 +261,13 @@ slack messages list '#general' 1234567890.123456 --tail 10  # last 10 replies;
 # JSON output
 slack messages list '#general' --json
 
-# Pagination output: when more messages exist on either side of the returned
-# slice, the text output prints a trailing footer such as
-#     [older: --before 1234.5678 | newer: --after 2345.6789]
+# Pagination output: when more messages exist inside the window on either side
+# of the returned slice, the text output prints a trailing footer such as
+#     [older: --before 1234.5678 --since 2024-01-15T00:00:00Z | newer: --after 2345.6789 --since 2024-01-15T00:00:00Z]
 # and the JSON envelope includes `has_more_before`, `has_more_after`,
-# `next_before_ts`, and `next_after_ts`. Use these cursors to page further.
+# `next_before_ts`, `next_after_ts`, and the window as `since` and `until`
+# (UTC, null when unbounded). Pass the cursor together with the window to
+# page further without leaving it.
 
 # Send a message to a channel
 slack messages send '#general' "Hello world"
@@ -308,6 +310,8 @@ slack messages delete '#general' 1234567890.123456
 # Skip confirmation
 slack messages delete '#general' 1234567890.123456 --force
 ```
+
+The window is `--since <= ts < --until`, and `--after` / `--before` are exclusive. `--head` returns the oldest messages of the window, `--tail` the newest, whichever bounds are given: `--head 5` alone is the first five messages of the channel, and `--today` (tail 25) the newest 25 of today. `has_more_before` and `has_more_after` count only messages inside the window.
 
 Messages with file attachments will show the file name, size, and download URL.
 

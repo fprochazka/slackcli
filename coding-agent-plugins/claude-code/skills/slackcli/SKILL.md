@@ -125,8 +125,10 @@ slice.
 **Text mode** — a trailing footer is printed when there is more to fetch, e.g.:
 
 ```
-[older: --before 1234.5678 | newer: --after 2345.6789]
+[older: --before 1234.5678 --since 2024-01-15T00:00:00Z | newer: --after 2345.6789 --since 2024-01-15T00:00:00Z]
 ```
+
+The footer repeats `--since` / `--until`, so a copied cursor stays inside the window. `has_more_*` counts only messages inside the window (`--since <= ts < --until`).
 
 In thread view the labels change to `earlier replies` / `later replies` so
 it's clear the cursors page within the thread.
@@ -139,7 +141,8 @@ slack messages list '#channel' --after 2345678901.234567
 ```
 
 **JSON mode** — the envelope includes `has_more_before`, `has_more_after`,
-`next_before_ts`, and `next_after_ts`. When viewing a thread in `--tail` mode,
+`next_before_ts`, `next_after_ts`, and the window as `since` / `until` (UTC, null when
+unbounded; pass them back with the cursor). When viewing a thread in `--tail` mode,
 it may also include `thread_parent_omitted: true` to signal that the root
 message was replaced with a placeholder.
 

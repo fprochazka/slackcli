@@ -133,6 +133,30 @@ for page in client.conversations_history(channel="C123", limit=100):
     messages = page["messages"]
 ```
 
+### Which end conversations.history walks from
+
+The bounds you send decide which way `conversations.history` walks, and so which end of a time window the first page holds. Observed on a live workspace with a small `limit`:
+
+| Bounds sent | Walk | First page holds | Next page (cursor) |
+|---|---|---|---|
+| neither | backward from now | the newest `limit` messages | older |
+| `latest` only | backward from `latest` | the newest `limit` below `latest` | older |
+| `oldest` only (above 0) | **forward** from `oldest` | the **oldest** `limit` above `oldest` | **newer** |
+| `oldest` and `latest` | backward from `latest` | the newest `limit` below `latest` | older |
+| `oldest=0` | backward from now; 0 counts as no bound | the newest `limit` messages | older |
+| `oldest=1` | forward from the start of the channel | the first `limit` messages of the channel | newer |
+
+- **Page order:** every page lists its messages newest first, even on a forward walk, so sort a page by `ts` before you slice it.
+- **A `latest` in the future** still walks backward from the newest message.
+- **`inclusive`** decides whether a message exactly at `oldest` or `latest` is returned.
+
+`messages list` relies on this rule:
+
+- **`--head`** sends only a lower bound (`--since`/`--after`, or `1` when there is none) and drops messages at or past the upper bound on its side.
+- **`--tail`** always sends `latest`: the upper bound (`--until`/`--before`), or a time a day ahead when there is none.
+
+Its window is `--since <= ts < --until`. `--after` and `--before` are exclusive.
+
 ## Rate Limits
 
 As of 2025, many endpoints are Tier 1 for non-Marketplace apps (~1 request/minute).

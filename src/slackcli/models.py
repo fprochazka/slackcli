@@ -343,6 +343,9 @@ class MessagesOutput:
     has_more_after: bool = False
     next_before_ts: str | None = None
     next_after_ts: str | None = None
+    # The --since / --until window as UTC time specs, carried into the next-page cursors; None when unbounded
+    since: str | None = None
+    until: str | None = None
     thread_parent_omitted: bool = False
     omitted_parent: Message | None = None
 
@@ -363,6 +366,8 @@ class MessagesOutput:
             "has_more_after": self.has_more_after,
             "next_before_ts": self.next_before_ts,
             "next_after_ts": self.next_after_ts,
+            "since": self.since,
+            "until": self.until,
         }
         if self.thread_parent_omitted:
             result["thread_parent_omitted"] = True
