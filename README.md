@@ -192,9 +192,15 @@ slack conversations list --dms             # DMs and group DMs only
 slack conversations list --member          # Channels you're a member of
 slack conversations list --non-member      # Channels you're not a member of
 
+# Filter by archive state
+slack conversations list --no-archived     # Hide archived channels
+slack conversations list --archived        # Archived channels only
+
 # Force refresh cache
 slack conversations list --refresh
 ```
+
+Archived channels are listed by default, with `archived` next to their type, as in `C0123456789: old-project (Public Channel, archived)`. `--archived` and `--no-archived` combine with the other filters, so `--public --no-archived` lists the public channels still in use.
 
 #### Membership
 

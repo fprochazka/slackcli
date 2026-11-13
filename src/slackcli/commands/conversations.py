@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 
 CACHE_NAME = "conversations"
 # Bump when the cached conversation shape changes, so caches written by an older version are fetched again
-CONVERSATIONS_CACHE_VERSION = 1
+CONVERSATIONS_CACHE_VERSION = 2  # 2: is_archived
 CACHE_MAX_AGE_HOURS = 6
 
 
@@ -277,6 +277,7 @@ def filter_conversations(
     public: bool = False,
     member: bool = False,
     non_member: bool = False,
+    archived: bool | None = None,
 ) -> list[Conversation]:
     """Filter conversations based on flags.
 
@@ -287,6 +288,7 @@ def filter_conversations(
         public: Show only public channels.
         member: Show only channels where user is a member.
         non_member: Show only channels where user is NOT a member.
+        archived: True shows only archived conversations, False hides them, None shows both.
 
     Returns:
         Filtered list of conversations.
@@ -314,6 +316,10 @@ def filter_conversations(
     if non_member:
         # DMs/MPIMs are never "non-member" since you're always a member
         result = [c for c in result if not c.is_member and not c.is_im and not c.is_mpim]
+
+    # Archive filter (AND logic with the others); applied at display time, the cache holds every conversation
+    if archived is not None:
+        result = [c for c in result if c.is_archived == archived]
 
     return result
 
@@ -363,6 +369,14 @@ def list_conversations(
             help="Show only channels where you are NOT a member.",
         ),
     ] = False,
+    archived: Annotated[
+        bool | None,
+        typer.Option(
+            "--archived/--no-archived",
+            help="Show only archived conversations, or hide them. Both are shown by default.",
+            show_default=False,
+        ),
+    ] = None,
 ) -> None:
     """List all Slack conversations (channels, DMs, groups)."""
     ctx = get_context()
@@ -380,6 +394,7 @@ def list_conversations(
         public=public,
         member=member,
         non_member=non_member,
+        archived=archived,
     )
 
     # Collect user IDs needed for display

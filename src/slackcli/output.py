@@ -378,7 +378,7 @@ def output_resolved_conversation_text(resolved: ResolvedConversation) -> None:
     else:
         print(f"Channel: #{convo.name} ({convo.id})")
 
-    print(f"Type: {convo.get_type()}")
+    print(f"Type: {convo.get_type()}{' (archived)' if convo.is_archived else ''}")
 
     if not convo.is_im:
         parts = [f"Member: {'yes' if convo.is_member else 'no'}"]
@@ -495,6 +495,8 @@ def output_conversations_text(
     for convo in sorted_convos:
         display_name = get_display_name(convo)
         convo_type = convo.get_type()
+        if convo.is_archived:
+            convo_type += ", archived"
         print(f"{convo.id}: {display_name} ({convo_type})")
 
     console.print(f"\n[dim]Total: {len(conversations)} conversations[/dim]")

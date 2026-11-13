@@ -67,6 +67,8 @@ slack conversations list --private    # Private channels only (group DMs are und
 slack conversations list --dms        # DMs and group DMs only
 slack conversations list --member     # Channels you're a member of
 slack conversations list --non-member # Channels you're not in
+slack conversations list --no-archived # Hide archived channels (shown by default, marked "archived")
+slack conversations list --archived   # Archived channels only
 slack conversations list --refresh    # Force cache refresh
 ```
 

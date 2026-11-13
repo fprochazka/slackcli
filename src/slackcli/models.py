@@ -455,6 +455,7 @@ class Conversation:
     created: int  # Unix timestamp
     user_id: str | None = None  # For DMs, the other user's ID
     member_ids: list[str] | None = None  # For group DMs, list of member IDs
+    is_archived: bool = False
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> Conversation:
@@ -485,6 +486,7 @@ class Conversation:
             created=data.get("created", 0),
             user_id=user_id,
             member_ids=None,  # Will be populated separately for mpim
+            is_archived=data.get("is_archived", False),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -504,6 +506,7 @@ class Conversation:
             "created": self.created,
             "user_id": self.user_id,
             "member_ids": self.member_ids,
+            "is_archived": self.is_archived,
         }
 
     @classmethod
@@ -524,6 +527,7 @@ class Conversation:
             created=data.get("created", 0),
             user_id=data.get("user_id"),
             member_ids=data.get("member_ids"),
+            is_archived=data.get("is_archived", False),
         )
 
     def get_type(self) -> str:
