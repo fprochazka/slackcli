@@ -656,6 +656,17 @@ uv run ruff check .
 uv run ruff check --fix .
 ```
 
+### Commit hooks
+
+slackcli is developed against real workspaces, so workspace names, channel IDs and user IDs from them end up in terminals, scratch files and test runs, and from there they can slip into a commit. `scripts/hooks` holds a pre-commit and a commit-msg hook that refuse a commit when a staged line or the commit message matches a private identifier. The identifiers live in a file outside the repository, because listing them here would publish the very strings the hooks exist to keep out. Set it up once per clone:
+
+```bash
+git config core.hooksPath scripts/hooks
+git config hooks.forbiddenPatternsFile ~/.config/git/forbidden-patterns.txt  # any path outside the repo
+```
+
+The file holds one extended regex per line, matched case-insensitively; blank lines and `#` comments are ignored. Until `hooks.forbiddenPatternsFile` points at a file with at least one pattern, both hooks refuse every commit and print how to fix it. Tests and docs use placeholder IDs such as `U0123456789` and `C0123456789`.
+
 ### Project Structure
 
 ```
