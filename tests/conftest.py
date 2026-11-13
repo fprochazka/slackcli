@@ -50,6 +50,7 @@ def cli_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("SLACK_ORG", raising=False)
     monkeypatch.delenv("SLACK_CONFIG", raising=False)
     monkeypatch.delenv("SLACK_AGENT_SIGNATURE", raising=False)
+    monkeypatch.delenv("SLACK_MIN_REQUEST_INTERVAL", raising=False)
     monkeypatch.setattr("slackcli.client.SlackCli.get_conversations_from_cache", lambda self: [])
     return config_path
 

@@ -68,6 +68,69 @@ class NoticeRateLimitErrorRetryHandler(RateLimitErrorRetryHandler):
         state.increment_current_attempt()
 
 
+class RequestPacer:
+    """Keeps at least min_interval seconds between the end of one Slack API call and the start of the next.
+
+    It paces one process only: two slackcli processes running at once each keep their own spacing.
+    """
+
+    def __init__(
+        self,
+        min_interval: float,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ):
+        """Create the pacer.
+
+        Args:
+            min_interval: Seconds to keep between calls; 0 turns pacing off.
+            clock: A monotonic clock, replaceable in tests.
+            sleep: The function that waits, replaceable in tests.
+        """
+        self.min_interval = min_interval
+        self._clock = clock
+        self._sleep = sleep
+        self._last_end: float | None = None
+
+    def wait(self) -> None:
+        """Wait until min_interval has passed since the last call ended."""
+        if self.min_interval <= 0 or self._last_end is None:
+            return
+        remaining = self._last_end + self.min_interval - self._clock()
+        if remaining > 0:
+            logger.debug(f"Pacing Slack API calls: waiting {remaining:.2f}s")
+            self._sleep(remaining)
+
+    def mark(self) -> None:
+        """Start the interval now: called when a call ends."""
+        self._last_end = self._clock()
+
+
+class PacedWebClient(WebClient):
+    """A WebClient that runs every API call through a RequestPacer."""
+
+    def __init__(self, *args: object, pacer: RequestPacer, **kwargs: object):
+        """Create the client.
+
+        Args:
+            *args: Passed to WebClient.
+            pacer: The pacer that spaces out the calls.
+            **kwargs: Passed to WebClient.
+        """
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self.pacer = pacer
+
+    def api_call(self, *args: object, **kwargs: object):  # type: ignore[override]
+        """Wait for the pacer, make the call, and start the next interval when it ends, failed or not."""
+        # slack_sdk retries a rate-limited request inside this one call, after its own Retry-After wait,
+        # so retries are never paced and a Retry-After wait is never added to the pacing interval.
+        self.pacer.wait()
+        try:
+            return super().api_call(*args, **kwargs)  # type: ignore[arg-type]
+        finally:
+            self.pacer.mark()
+
+
 def _retry_after_seconds(response: HttpResponse) -> int | None:
     """Read the Retry-After header as whole seconds.
 
@@ -129,26 +192,31 @@ def create_web_client(
     token: str,
     retry_handlers: list[RetryHandler] | None = None,
     max_retry_count: int = DEFAULT_MAX_RETRY_COUNT,
+    min_request_interval: float = 0.0,
 ) -> WebClient:
-    """Create a WebClient with retry handlers configured.
+    """Create a WebClient with retry handlers and request pacing configured.
 
     Args:
         token: The Slack API token.
         retry_handlers: Optional list of retry handlers. If None, default handlers are used.
         max_retry_count: Maximum number of retry attempts (used if retry_handlers is None).
+        min_request_interval: Seconds to keep between the end of one API call and the start of the next.
 
     Returns:
         A configured WebClient instance.
     """
+    pacer = RequestPacer(min_request_interval)
     if retry_handlers is None:
         retry_handlers = get_default_retry_handlers(max_retry_count=max_retry_count)
 
-    client = WebClient(token=token, ssl=create_ssl_context())
+    client = PacedWebClient(token=token, ssl=create_ssl_context(), pacer=pacer)
 
     # Add retry handlers
     for handler in retry_handlers:
         client.retry_handlers.append(handler)
 
-    logger.debug(f"Created WebClient with {len(retry_handlers)} retry handler(s)")
+    logger.debug(
+        f"Created WebClient with {len(retry_handlers)} retry handler(s), min request interval {min_request_interval}s"
+    )
 
     return client

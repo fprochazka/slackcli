@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from click.testing import Result
 
-from slackcli.config import AGENT_SIGNATURE_ENV_VAR, load_config
+from slackcli.config import AGENT_SIGNATURE_ENV_VAR, MIN_REQUEST_INTERVAL_ENV_VAR, load_config
 
 
 @pytest.fixture(autouse=True)
 def clear_agent_signature_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep an ambient SLACK_AGENT_SIGNATURE out of every test in this module."""
+    """Keep an ambient SLACK_AGENT_SIGNATURE and SLACK_MIN_REQUEST_INTERVAL out of every test in this module."""
     monkeypatch.delenv(AGENT_SIGNATURE_ENV_VAR, raising=False)
+    monkeypatch.delenv(MIN_REQUEST_INTERVAL_ENV_VAR, raising=False)
 
 
 def write_config(tmp_path: Path, content: str) -> Path:
@@ -265,3 +268,68 @@ class TestAgentSignatureEnvVar:
         config = load_config(write_config(tmp_path, '[orgs.globex]\ntoken = "xoxp-fake-2"\n'))
 
         assert config.agent_signature == "marketing"
+
+
+ONE_ORG = '[orgs.acme]\ntoken = "xoxp-fake-1"\n'
+
+
+class TestMinRequestInterval:
+    """Tests for the min_request_interval key and the SLACK_MIN_REQUEST_INTERVAL environment variable."""
+
+    def test_defaults_to_zero(self, tmp_path: Path) -> None:
+        assert load_config(write_config(tmp_path, ONE_ORG)).min_request_interval == 0.0
+
+    @pytest.mark.parametrize(("value", "expected"), [("0.5", 0.5), ("2", 2.0), ("0", 0.0)])
+    def test_reads_the_config_key(self, tmp_path: Path, value: str, expected: float) -> None:
+        config = load_config(write_config(tmp_path, f"min_request_interval = {value}\n{ONE_ORG}"))
+
+        assert config.min_request_interval == expected
+
+    def test_environment_wins_over_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(MIN_REQUEST_INTERVAL_ENV_VAR, " 1.5 ")
+
+        config = load_config(write_config(tmp_path, f"min_request_interval = 0.5\n{ONE_ORG}"))
+
+        assert config.min_request_interval == 1.5
+
+    @pytest.mark.parametrize("value", ["", "   "])
+    def test_empty_environment_leaves_config_in_charge(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+    ) -> None:
+        monkeypatch.setenv(MIN_REQUEST_INTERVAL_ENV_VAR, value)
+
+        config = load_config(write_config(tmp_path, f"min_request_interval = 0.5\n{ONE_ORG}"))
+
+        assert config.min_request_interval == 0.5
+
+    @pytest.mark.parametrize("value", ["fast", "-1", "nan", "inf"])
+    def test_rejects_a_bad_environment_value(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+        monkeypatch.setenv(MIN_REQUEST_INTERVAL_ENV_VAR, value)
+
+        with pytest.raises(ValueError) as excinfo:
+            load_config(write_config(tmp_path, ONE_ORG))
+
+        assert str(excinfo.value) == (
+            "Invalid SLACK_MIN_REQUEST_INTERVAL: expected a number of seconds, 0 or more, such as 0.5"
+        )
+
+    @pytest.mark.parametrize("value", ["-0.5", "true", '"slow"', "[1]"])
+    def test_rejects_a_bad_config_value(self, tmp_path: Path, value: str) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            load_config(write_config(tmp_path, f"min_request_interval = {value}\n{ONE_ORG}"))
+
+        assert str(excinfo.value) == (
+            "Invalid 'min_request_interval': expected a number of seconds, 0 or more, such as 0.5"
+        )
+
+
+def test_slack_config_shows_the_interval_and_its_source(
+    run_cli: Callable[..., Result], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(MIN_REQUEST_INTERVAL_ENV_VAR, "0.25")
+
+    result = run_cli("config")
+
+    assert result.exit_code == 0
+    assert '"min_request_interval": 0.25' in result.stdout
+    assert "Using min_request_interval from SLACK_MIN_REQUEST_INTERVAL: 0.25" in result.stdout
