@@ -35,7 +35,7 @@ USERS_LIST_MARKER_NAME = "users-list-complete.json"
 
 # Bump when the cached user shape changes. Cached users and the users-list marker written by another
 # version count as expired, so the users are fetched again.
-USER_CACHE_VERSION = 1
+USER_CACHE_VERSION = 2  # 2: title
 
 
 @dataclass
@@ -51,6 +51,7 @@ class UserInfo:
     is_admin: bool
     deleted: bool
     updated_at: str  # ISO format datetime
+    title: str = ""  # profile.title, the job title
     # Schema version of the cache entry this was read from; a fresh API answer is always current
     cache_version: int = USER_CACHE_VERSION
 
@@ -75,6 +76,7 @@ class UserInfo:
             is_admin=data.get("is_admin", False),
             deleted=data.get("deleted", False),
             updated_at=datetime.now().isoformat(),
+            title=profile.get("title", "") or "",
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -88,6 +90,7 @@ class UserInfo:
             "name": self.name,
             "display_name": self.display_name,
             "real_name": self.real_name,
+            "title": self.title,
             "email": self.email,
             "is_bot": self.is_bot,
             "is_admin": self.is_admin,
@@ -109,6 +112,7 @@ class UserInfo:
             "name": self.name,
             "real_name": self.real_name,
             "display_name": self.display_name,
+            "title": self.title,
             "email": self.email,
             "is_bot": self.is_bot,
             "is_admin": self.is_admin,
@@ -137,6 +141,7 @@ class UserInfo:
             is_admin=data.get("is_admin", False),
             deleted=data.get("deleted", False),
             updated_at=meta.get("updated_at", ""),
+            title=data.get("title", "") or "",
             cache_version=UNVERSIONED_CACHE_VERSION if recorded_version is None else recorded_version,
         )
 

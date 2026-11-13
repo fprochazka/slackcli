@@ -491,8 +491,9 @@ slack users list
 # List users as JSON
 slack users list --json
 
-# Search for users
+# Search for users by handle, display name, real name, job title or email
 slack users search "john"
+slack users search "product manager"
 
 # Get user details by username
 slack users get @john.doe
@@ -500,6 +501,8 @@ slack users get @john.doe
 # Get user details by ID
 slack users get U0123456789
 ```
+
+User output, text and `--json`, includes the job title from the Slack profile as `title`, an empty string when it is not set.
 
 ### Utilities
 

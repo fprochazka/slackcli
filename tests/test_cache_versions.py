@@ -187,14 +187,21 @@ def test_cached_user_of_another_version_is_expired(monkeypatch: pytest.MonkeyPat
     assert load_all_users_from_cache(ORG) == []
 
 
-def test_cached_user_without_a_version_counts_as_version_1(isolated_cache_dir: Path) -> None:
+def test_cached_user_without_a_version_counts_as_version_1(
+    isolated_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     save_user_to_cache(ORG, UserInfo.from_api(user_data("U0123456789", "alice")))
     strip_version(isolated_cache_dir / ORG / "users" / "U0123456789.json", "_meta")
 
+    monkeypatch.setattr("slackcli.users.USER_CACHE_VERSION", 1)
     user = load_user_from_cache(ORG, "U0123456789")
-
     assert user is not None
     assert not user.is_expired()
+
+    monkeypatch.setattr("slackcli.users.USER_CACHE_VERSION", 2)
+    user = load_user_from_cache(ORG, "U0123456789")
+    assert user is not None
+    assert user.is_expired()
 
 
 def test_get_user_refetches_a_user_cached_by_another_version(
@@ -242,11 +249,16 @@ def test_marker_of_another_version_does_not_mark_the_list_complete(monkeypatch: 
     assert not is_users_cache_complete(ORG)
 
 
-def test_marker_without_a_version_counts_as_version_1(isolated_cache_dir: Path) -> None:
+def test_marker_without_a_version_counts_as_version_1(
+    isolated_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     mark_users_cache_complete(ORG, 1)
     strip_version(isolated_cache_dir / ORG / "users-list-complete.json")
 
+    monkeypatch.setattr("slackcli.users.USER_CACHE_VERSION", 1)
     assert is_users_cache_complete(ORG)
+    monkeypatch.setattr("slackcli.users.USER_CACHE_VERSION", 2)
+    assert not is_users_cache_complete(ORG)
 
 
 def test_unreadable_marker_does_not_mark_the_list_complete(isolated_cache_dir: Path) -> None:

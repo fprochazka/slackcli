@@ -45,6 +45,10 @@ def _format_user_line(user: UserInfo) -> str:
     if user.display_name and user.display_name != user.name:
         parts.append(f"({user.display_name})")
 
+    # Add the job title if set
+    if user.title:
+        parts.append(f"- {user.title}")
+
     # Add email if available
     if user.email:
         parts.append(f"<{user.email}>")
@@ -158,7 +162,7 @@ def search_users(
     query: Annotated[
         str,
         typer.Argument(
-            help="Search query (matches name, display name, real name, or email).",
+            help="Search query (matches name, display name, real name, title, or email).",
         ),
     ],
     output_json_flag: Annotated[
@@ -169,12 +173,13 @@ def search_users(
         ),
     ] = False,
 ) -> None:
-    """Search users by name or email.
+    """Search users by name, title or email.
 
     The search is case-insensitive and matches against:
     - username (@name)
     - display name
     - real name
+    - title
     - email
 
     Examples:
@@ -203,6 +208,7 @@ def search_users(
                 query_lower in user.name.lower()
                 or query_lower in user.display_name.lower()
                 or query_lower in user.real_name.lower()
+                or query_lower in user.title.lower()
                 or (user.email and query_lower in user.email.lower())
             ):
                 matching_users.append(user)

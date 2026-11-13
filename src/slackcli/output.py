@@ -409,6 +409,7 @@ def output_user_text(user: UserInfo) -> None:
     print(f"Username:     @{user.name}")
     print(f"Display Name: {user.display_name}")
     print(f"Real Name:    {user.real_name}")
+    print(f"Title:        {user.title or '(not set)'}")
     print(f"Email:        {user.email or '(not available)'}")
     print(f"Is Bot:       {'Yes' if user.is_bot else 'No'}")
     print(f"Is Admin:     {'Yes' if user.is_admin else 'No'}")
