@@ -21,7 +21,7 @@ from ..compose import (
     preview_removal_update,
 )
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..models import Message, MessagesOutput, resolve_slack_mentions
 from ..output import (
@@ -126,11 +126,7 @@ def resolve_target(slack: SlackCli, target: str) -> tuple[str, str, bool]:
             return dm_channel_id, f"@{username}", True
 
         except SlackApiError as e:
-            error_msg, hint = format_error_with_hint(e)
-            error_console.print(f"[red]Failed to open DM: {error_msg}[/red]")
-            if hint:
-                error_console.print(f"[dim]Hint: {hint}[/dim]")
-            raise typer.Exit(1) from None
+            fail(e, prefix="Failed to open DM: ")
 
     # It's a channel reference
     channel_id, channel_name = resolve_channel(slack, target)
@@ -479,11 +475,7 @@ def list_messages(
                 before_ts=before_ts,
             )
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
     # Thread placeholder logic: in --tail mode with overflow, drop the
     # parent content and present a placeholder instead. ``thread_total_count``
@@ -764,12 +756,7 @@ def send_message(
             output_json(results)
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 def compose_or_exit(
@@ -984,12 +971,7 @@ def edit_message(
             console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("delete")
@@ -1058,9 +1040,4 @@ def delete_message(
             console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)

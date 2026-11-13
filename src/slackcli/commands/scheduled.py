@@ -10,7 +10,7 @@ from slack_sdk.errors import SlackApiError
 
 from ..compose import MessageFormat
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..output import format_message_text, output_json
 from ..time_utils import parse_future_time
@@ -145,12 +145,7 @@ def list_scheduled(
                 print()  # Blank line between messages
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("create")
@@ -281,12 +276,7 @@ def create_scheduled(
             console.print(f"[dim]scheduled_message_id={scheduled_message_id}, post_at={post_at_str}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("delete")
@@ -339,9 +329,4 @@ def delete_scheduled(
             console.print(f"[dim]id={scheduled_message_id}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e)

@@ -12,7 +12,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..models import format_file_size
 from ..output import output_json
@@ -150,11 +150,7 @@ def download_file(
         file_size = file_info.get("size", 0)
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
     # Generate unique download directory
     download_dir = _generate_download_dir()
@@ -183,8 +179,4 @@ def download_file(
             console.print(f"Path: {result['path']}")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)

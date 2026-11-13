@@ -12,7 +12,7 @@ from slack_sdk.errors import SlackApiError
 
 from ..cache import get_cache_age, load_cache, save_cache
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..models import Conversation
 from ..output import output_conversations_text, output_json
@@ -102,11 +102,7 @@ def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
                 break
 
         except SlackApiError as e:
-            error_msg, hint = format_error_with_hint(e)
-            error_console.print(f"[red]{error_msg}[/red]")
-            if hint:
-                error_console.print(f"[dim]Hint: {hint}[/dim]")
-            raise typer.Exit(1) from None
+            fail(e)
 
     logger.debug(f"Fetched {len(conversations)} conversations total")
 
@@ -493,11 +489,7 @@ def invite_users(
                 console.print(f"[yellow]Skipped {uid}: {code}[/yellow]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("join")
@@ -545,11 +537,7 @@ def join_channel(
                 console.print(f"[yellow]Warning: {warning}[/yellow]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("leave")
@@ -595,8 +583,4 @@ def leave_channel(
                 console.print(f"[green]Left #{channel_name}.[/green]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)

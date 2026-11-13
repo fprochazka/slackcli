@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
+import typer
 from slack_sdk.errors import SlackApiError
+
+from .logging import error_console
 
 # Mapping of Slack API error codes to helpful hint messages
 ERROR_HINTS: dict[str, str] = {
@@ -137,3 +142,21 @@ def format_error_with_hint(error: SlackApiError, context: dict[str, str] | None 
         hint = f"Rate limit exceeded. Try again in {retry_after} seconds."
 
     return f"Slack API error: {error_code}", hint
+
+
+def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: str = "") -> NoReturn:
+    """Print a Slack API error and its hint on stderr, then exit the command.
+
+    Args:
+        error: The SlackApiError raised by the API call.
+        context: Optional context for formatting the hint, as in format_error_with_hint.
+        prefix: Optional text printed in front of the error message, such as "Failed to open DM: ".
+
+    Raises:
+        typer.Exit: Always.
+    """
+    error_msg, hint = format_error_with_hint(error, context)
+    error_console.print(f"[red]{prefix}{error_msg}[/red]")
+    if hint:
+        error_console.print(f"[dim]Hint: {hint}[/dim]")
+    raise typer.Exit(1) from None
