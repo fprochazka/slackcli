@@ -73,14 +73,16 @@ class SlackCli:
         return load_conversations(self, fresh=fresh)
 
     def get_conversations_from_cache(self) -> list["Conversation"] | None:
-        """Load conversations from cache only (no API call).
+        """Load conversations from cache, without an API call unless the cache was written by another schema version.
+
+        A cache of another version is fetched again, with progress on stderr.
 
         Returns:
             List of conversations, or None if cache doesn't exist.
         """
-        from .commands.conversations import load_conversations_from_cache
+        from .commands.conversations import load_conversations_for_lookup
 
-        return load_conversations_from_cache(self.org_name)
+        return load_conversations_for_lookup(self)
 
     def get_conversation_info(self, channel_id: str) -> dict[str, Any]:
         """Fetch conversation metadata directly from the API.

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from slack_sdk.errors import SlackApiError
 
-from ..cache import get_cache_age, load_cache, save_cache
+from ..cache import get_cache_age, get_cache_path, load_cache, save_cache
 from ..context import get_context
 from ..errors import fail
 from ..logging import console, error_console, get_logger
@@ -30,6 +30,8 @@ app = typer.Typer(
 logger = get_logger(__name__)
 
 CACHE_NAME = "conversations"
+# Bump when the cached conversation shape changes, so caches written by an older version are fetched again
+CONVERSATIONS_CACHE_VERSION = 1
 CACHE_MAX_AGE_HOURS = 6
 
 
@@ -62,15 +64,17 @@ def fetch_mpim_members(slack: SlackCli, conversation_id: str) -> list[str]:
     return response.get("members", [])
 
 
-def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
+def fetch_all_conversations(slack: SlackCli, quiet: bool = False) -> list[Conversation]:
     """Fetch all conversations from Slack API with pagination.
 
     Args:
         slack: The SlackCli client.
+        quiet: Print progress to stderr instead of stdout, so stdout carries only the command's output.
 
     Returns:
         List of all conversations.
     """
+    progress = error_console if quiet else console
     conversations: list[Conversation] = []
     cursor: str | None = None
 
@@ -118,7 +122,7 @@ def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
     mpim_convos = [c for c in conversations if c.is_mpim]
     try:
         if mpim_convos:
-            console.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
+            progress.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
             for convo in mpim_convos:
                 member_ids = fetch_mpim_members(slack, convo.id)
                 convo.member_ids = member_ids
@@ -126,7 +130,7 @@ def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
 
         # Fetch user info (uses new per-user file caching with lazy loading)
         if user_ids_to_fetch:
-            console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
+            progress.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
             # This will fetch and cache users individually with 24h soft expiry
             slack.get_user_display_names(list(user_ids_to_fetch))
     except SlackApiError as e:
@@ -145,7 +149,7 @@ def load_conversations_from_cache(org_name: str) -> list[Conversation] | None:
     Returns:
         List of conversations, or None if cache doesn't exist.
     """
-    cache_data = load_cache(org_name, CACHE_NAME)
+    cache_data = load_cache(org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION)
 
     if cache_data is None:
         return None
@@ -154,6 +158,29 @@ def load_conversations_from_cache(org_name: str) -> list[Conversation] | None:
     conversations_data = data.get("conversations", [])
 
     return [Conversation.from_dict(c) for c in conversations_data]
+
+
+def load_conversations_for_lookup(slack: SlackCli) -> list[Conversation] | None:
+    """Load conversations to resolve a channel reference, fetching them again when the cache has another schema version.
+
+    A cache written by another slackcli version is not usable, but its presence shows the user did list the
+    conversations before, so it is fetched again instead of asking them to. Progress goes to stderr, which
+    keeps stdout clean under --json. A missing cache is left missing.
+
+    Args:
+        slack: The SlackCli client.
+
+    Returns:
+        List of conversations, or None if no cache exists.
+    """
+    conversations = load_conversations_from_cache(slack.org_name)
+    if conversations is not None or not get_cache_path(slack.org_name, CACHE_NAME).exists():
+        return conversations
+
+    error_console.print("[dim]Conversations cache was written by another slackcli version, fetching it again...[/dim]")
+    conversations = fetch_all_conversations(slack, quiet=True)
+    save_conversations_to_cache(slack.org_name, conversations)
+    return conversations
 
 
 def save_conversations_to_cache(org_name: str, conversations: list[Conversation]) -> None:
@@ -166,21 +193,22 @@ def save_conversations_to_cache(org_name: str, conversations: list[Conversation]
     data = {
         "conversations": [c.to_dict() for c in conversations],
     }
-    cache_path = save_cache(org_name, CACHE_NAME, data)
+    cache_path = save_cache(org_name, CACHE_NAME, data, CONVERSATIONS_CACHE_VERSION)
     logger.debug(f"Saved {len(conversations)} conversations to {cache_path}")
 
 
-def is_cache_expired(org_name: str, cache_name: str) -> bool:
+def is_cache_expired(org_name: str, cache_name: str, version: int) -> bool:
     """Check if the cache is older than CACHE_MAX_AGE_HOURS.
 
     Args:
         org_name: The organization name.
         cache_name: The name of the cache.
+        version: The schema version the caller writes; a cache written by another version counts as expired.
 
     Returns:
-        True if cache is expired or doesn't exist.
+        True if cache is expired, doesn't exist or was written by another schema version.
     """
-    cache_age = get_cache_age(org_name, cache_name)
+    cache_age = get_cache_age(org_name, cache_name, version)
     if cache_age is None:
         return True
     return datetime.now() - cache_age > timedelta(hours=CACHE_MAX_AGE_HOURS)
@@ -207,7 +235,7 @@ def load_conversations(
     needs_refresh = fresh
 
     # Check if cache is expired (older than 6 hours)
-    if not needs_refresh and is_cache_expired(slack.org_name, CACHE_NAME):
+    if not needs_refresh and is_cache_expired(slack.org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION):
         console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
         needs_refresh = True
 
@@ -215,7 +243,7 @@ def load_conversations(
     if not needs_refresh:
         conversations = load_conversations_from_cache(slack.org_name)
         if conversations is not None:
-            cache_age = get_cache_age(slack.org_name, CACHE_NAME)
+            cache_age = get_cache_age(slack.org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION)
             if cache_age:
                 console.print(
                     f"[dim]Using cached conversations (updated {cache_age.strftime('%Y-%m-%d %H:%M:%S')})[/dim]"

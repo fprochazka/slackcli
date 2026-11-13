@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from slack_sdk.errors import SlackApiError
 
-from .cache import get_cache_dir
+from .cache import UNVERSIONED_CACHE_VERSION, get_cache_dir, is_current_version
 from .errors import get_error_code
 from .logging import get_logger
 
@@ -33,6 +33,10 @@ PERMANENT_USER_ERRORS = frozenset({"user_not_found", "user_not_visible"})
 # Written next to the users directory once a users.list walk has gone through every page
 USERS_LIST_MARKER_NAME = "users-list-complete.json"
 
+# Bump when the cached user shape changes. Cached users and the users-list marker written by another
+# version count as expired, so the users are fetched again.
+USER_CACHE_VERSION = 1
+
 
 @dataclass
 class UserInfo:
@@ -47,6 +51,8 @@ class UserInfo:
     is_admin: bool
     deleted: bool
     updated_at: str  # ISO format datetime
+    # Schema version of the cache entry this was read from; a fresh API answer is always current
+    cache_version: int = USER_CACHE_VERSION
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> UserInfo:
@@ -97,7 +103,7 @@ class UserInfo:
         return {
             "_meta": {
                 "updated_at": self.updated_at,
-                "version": 1,
+                "version": USER_CACHE_VERSION,
             },
             "id": self.id,
             "name": self.name,
@@ -120,6 +126,7 @@ class UserInfo:
             A UserInfo instance.
         """
         meta = data.get("_meta", {})
+        recorded_version = meta.get("version")
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
@@ -130,7 +137,12 @@ class UserInfo:
             is_admin=data.get("is_admin", False),
             deleted=data.get("deleted", False),
             updated_at=meta.get("updated_at", ""),
+            cache_version=UNVERSIONED_CACHE_VERSION if recorded_version is None else recorded_version,
         )
+
+    def is_current_schema(self) -> bool:
+        """Tell whether this entry was cached by the current schema version."""
+        return is_current_version(self.cache_version, USER_CACHE_VERSION)
 
     def get_best_display_name(self) -> str:
         """Get the best display name for the user.
@@ -156,8 +168,10 @@ class UserInfo:
         """Check if the cached user info is expired.
 
         Returns:
-            True if older than USER_CACHE_EXPIRY_HOURS.
+            True if older than USER_CACHE_EXPIRY_HOURS, or cached by another schema version.
         """
+        if not self.is_current_schema():
+            return True
         if not self.updated_at:
             return True
         try:
@@ -398,9 +412,19 @@ def is_users_cache_complete(org_name: str) -> bool:
         org_name: The organization name.
 
     Returns:
-        True when the marker exists.
+        True when the marker exists and was written by the current schema version.
     """
-    return get_users_list_marker_path(org_name).exists()
+    marker_path = get_users_list_marker_path(org_name)
+    if not marker_path.exists():
+        return False
+    try:
+        with open(marker_path) as f:
+            marker = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.debug(f"Failed to read the users-list marker {marker_path}: {e}")
+        return False
+    recorded = marker.get("version") if isinstance(marker, dict) else None
+    return is_current_version(recorded, USER_CACHE_VERSION)
 
 
 def mark_users_cache_complete(org_name: str, count: int) -> None:
@@ -413,17 +437,21 @@ def mark_users_cache_complete(org_name: str, count: int) -> None:
     marker_path = get_users_list_marker_path(org_name)
     marker_path.parent.mkdir(parents=True, exist_ok=True)
     with open(marker_path, "w") as f:
-        json.dump({"completed_at": datetime.now().isoformat(), "count": count}, f, indent=2)
+        json.dump(
+            {"completed_at": datetime.now().isoformat(), "count": count, "version": USER_CACHE_VERSION}, f, indent=2
+        )
 
 
 def load_all_users_from_cache(org_name: str) -> list[UserInfo]:
     """Load all cached users from the users cache directory.
 
+    Users cached by another schema version are left out, as if they were not cached.
+
     Args:
         org_name: The organization name.
 
     Returns:
-        List of all cached UserInfo objects.
+        List of all cached UserInfo objects written by the current schema version.
     """
     cache_dir = get_users_cache_dir(org_name)
     if not cache_dir.exists():
@@ -434,9 +462,12 @@ def load_all_users_from_cache(org_name: str) -> list[UserInfo]:
         try:
             with open(cache_file) as f:
                 data = json.load(f)
-                users.append(UserInfo.from_cache_dict(data))
+                user = UserInfo.from_cache_dict(data)
         except (json.JSONDecodeError, OSError) as e:
             logger.debug(f"Failed to load user cache file {cache_file}: {e}")
+            continue
+        if user.is_current_schema():
+            users.append(user)
 
     return users
 
