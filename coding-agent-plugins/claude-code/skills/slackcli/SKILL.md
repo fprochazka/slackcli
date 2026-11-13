@@ -241,11 +241,13 @@ slack search files "budget" --after 30d
 slack users list                    # List all users (cached)
 slack users list --refresh          # Force refresh
 slack users list --bots --deleted   # Include bots and deleted users
-slack users search "john"           # Search by name/email
+slack users search "john"           # Search by name, job title or email
 slack users get @john.doe           # Get user details
 slack users get john@example.com    # Get by email
 slack users get U0123456789         # Get by user ID
 ```
+
+User JSON includes `title`, the job title from the profile (`""` when not set).
 
 ## Files
 
