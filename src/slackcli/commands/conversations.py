@@ -52,14 +52,14 @@ def fetch_mpim_members(slack: SlackCli, conversation_id: str) -> list[str]:
 
     Returns:
         List of member user IDs.
+
+    Raises:
+        SlackApiError: When the call fails. An empty list is never returned in place of an error,
+            because the caller caches what it gets.
     """
-    try:
-        response = slack.client.conversations_members(channel=conversation_id, limit=100)
-        if response["ok"]:
-            return response.get("members", [])
-    except SlackApiError as e:
-        logger.debug(f"Failed to fetch members for {conversation_id}: {e}")
-    return []
+    response = slack.client.conversations_members(channel=conversation_id, limit=100)
+    slack._check_response(response, "Fetch group DM members")
+    return response.get("members", [])
 
 
 def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
@@ -116,18 +116,22 @@ def fetch_all_conversations(slack: SlackCli) -> list[Conversation]:
 
     # Fetch members for group DMs (mpim)
     mpim_convos = [c for c in conversations if c.is_mpim]
-    if mpim_convos:
-        console.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
-        for convo in mpim_convos:
-            member_ids = fetch_mpim_members(slack, convo.id)
-            convo.member_ids = member_ids
-            user_ids_to_fetch.update(member_ids)
+    try:
+        if mpim_convos:
+            console.print(f"[dim]Fetching members for {len(mpim_convos)} group DMs...[/dim]")
+            for convo in mpim_convos:
+                member_ids = fetch_mpim_members(slack, convo.id)
+                convo.member_ids = member_ids
+                user_ids_to_fetch.update(member_ids)
 
-    # Fetch user info (uses new per-user file caching with lazy loading)
-    if user_ids_to_fetch:
-        console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
-        # This will fetch and cache users individually with 24h soft expiry
-        slack.get_user_display_names(list(user_ids_to_fetch))
+        # Fetch user info (uses new per-user file caching with lazy loading)
+        if user_ids_to_fetch:
+            console.print(f"[dim]Resolving {len(user_ids_to_fetch)} user names...[/dim]")
+            # This will fetch and cache users individually with 24h soft expiry
+            slack.get_user_display_names(list(user_ids_to_fetch))
+    except SlackApiError as e:
+        # Exit before the caller caches the list, so no group DM is stored with missing members
+        fail(e)
 
     return conversations
 

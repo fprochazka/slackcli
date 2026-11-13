@@ -21,7 +21,7 @@ from ..compose import (
     preview_removal_update,
 )
 from ..context import get_context
-from ..errors import fail
+from ..errors import EXIT_RATE_LIMITED, fail, get_error_code, is_rate_limited, report_error
 from ..logging import console, error_console, get_logger
 from ..models import Message, MessagesOutput, resolve_slack_mentions
 from ..output import (
@@ -104,7 +104,10 @@ def resolve_target(slack: SlackCli, target: str) -> tuple[str, str, bool]:
     # Check if this is a user reference (DM)
     if target.startswith("@") or (target.startswith("U") and re.match(r"^U[A-Z0-9]+$", target)):
         # It's a user reference - resolve to DM
-        resolved = slack.resolve_user(target)
+        try:
+            resolved = slack.resolve_user(target)
+        except SlackApiError as e:
+            fail(e)
         if resolved is None:
             error_console.print(f"[red]Could not resolve user '{target}'.[/red]")
             error_console.print("[dim]Hint: Try @username, @email@example.com, or a raw user ID (U...).[/dim]")
@@ -212,6 +215,57 @@ def convert_messages_to_model(
         channel_name=channel_name,
         messages=messages,
     )
+
+
+def _fetch_inline_threads(slack: SlackCli, channel_id: str, messages: list[dict[str, Any]]) -> int:
+    """Load the replies of every thread root in the slice, for --with-threads.
+
+    A thread whose replies cannot be loaded gets ``replies_error`` set to the Slack error code, and the
+    error is reported on stderr. After a rate limit the remaining threads are not tried: each would
+    wait out up to three more Retry-After periods first. They get the same ``replies_error``.
+
+    Args:
+        slack: The SlackCli client.
+        channel_id: The channel ID.
+        messages: The raw messages of the slice; ``replies`` or ``replies_error`` is set on the roots.
+
+    Returns:
+        0 when every thread loaded. Otherwise the exit code for the command: 1 if any thread failed for
+        a reason other than a rate limit, because waiting would not help it, else EXIT_RATE_LIMITED.
+    """
+    errors: list[SlackApiError] = []
+    rate_limit: SlackApiError | None = None
+    skipped = 0
+
+    for msg in messages:
+        if msg.get("reply_count", 0) <= 0:
+            continue
+        msg_ts = msg.get("ts", "")
+        if rate_limit is not None:
+            msg["replies_error"] = get_error_code(rate_limit)
+            skipped += 1
+            continue
+        try:
+            thread_messages = slack.fetch_full_thread(channel_id, msg_ts)
+        except SlackApiError as e:
+            msg["replies_error"] = get_error_code(e)
+            errors.append(e)
+            report_error(e, prefix=f"Replies of thread {msg_ts} not loaded: ")
+            if is_rate_limited(e):
+                rate_limit = e
+            continue
+        if thread_messages:
+            # Skip the parent to avoid duplication.
+            msg["replies"] = [m for m in thread_messages if m.get("ts") != msg_ts]
+
+    if skipped:
+        error_console.print(f"[red]Replies of {skipped} more threads not loaded: skipped after the rate limit.[/red]")
+
+    if not errors:
+        return 0
+    if all(is_rate_limited(e) for e in errors):
+        return EXIT_RATE_LIMITED
+    return 1
 
 
 @app.command("list")
@@ -516,22 +570,13 @@ def list_messages(
             console.print(f"[dim]Found {shown} messages[/dim]\n")
 
     # Fetch thread replies if --with-threads is enabled and not already viewing a thread
+    thread_exit_code = 0
     if with_threads and thread_ts is None:
         messages_with_threads = [msg for msg in fetched_messages if msg.get("reply_count", 0) > 0]
         if messages_with_threads and not output_json_flag:
             console.print(f"[dim]Fetching {len(messages_with_threads)} threads...[/dim]")
 
-        for msg in fetched_messages:
-            reply_count = msg.get("reply_count", 0)
-            if reply_count > 0:
-                msg_ts = msg.get("ts", "")
-                try:
-                    thread_messages = slack.fetch_full_thread(channel_id, msg_ts)
-                    if thread_messages:
-                        # Skip the parent to avoid duplication.
-                        msg["replies"] = [m for m in thread_messages if m.get("ts") != msg_ts]
-                except SlackApiError as e:
-                    logger.debug(f"Failed to fetch thread {msg_ts}: {e}")
+        thread_exit_code = _fetch_inline_threads(slack, channel_id, fetched_messages)
 
     # Collect user IDs for resolution
     include_reaction_users = reactions == "names" or output_json_flag
@@ -579,6 +624,10 @@ def list_messages(
         output_thread_text(messages_output, reactions)
     else:
         output_messages_text(messages_output, reactions, with_threads)
+
+    # A thread that could not be loaded is marked in the output above; the exit code reports it too
+    if thread_exit_code:
+        raise typer.Exit(thread_exit_code)
 
 
 @app.command("send")

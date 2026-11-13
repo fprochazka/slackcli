@@ -222,6 +222,9 @@ def _output_message_text(
     if meta_parts:
         print(f"{text_indent}{' '.join(meta_parts)}")
 
+    if with_threads and msg.replies_error:
+        print(f"{text_indent}[replies not loaded: {msg.replies_error}]")
+
     # Display inline thread replies if present
     if with_threads and msg.replies:
         print()  # Blank line before replies
