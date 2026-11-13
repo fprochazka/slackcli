@@ -170,6 +170,20 @@ def get_retry_after(error: SlackApiError) -> str | None:
     return None
 
 
+def api_method_from_url(api_url: str | None) -> str | None:
+    """Name the Slack API method a request URL calls, such as "conversations.history".
+
+    Args:
+        api_url: The request URL, such as "https://slack.com/api/conversations.history".
+
+    Returns:
+        The last path segment of the URL, or None when there is no URL.
+    """
+    if not api_url:
+        return None
+    return api_url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or None
+
+
 def get_api_method(error: SlackApiError) -> str | None:
     """Name the Slack API method whose call failed, such as "conversations.history".
 
@@ -179,10 +193,7 @@ def get_api_method(error: SlackApiError) -> str | None:
     Returns:
         The method name taken from the request URL, or None when the response does not carry the URL.
     """
-    api_url = getattr(error.response, "api_url", None)
-    if not api_url:
-        return None
-    return api_url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or None
+    return api_method_from_url(getattr(error.response, "api_url", None))
 
 
 def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: str = "") -> NoReturn:

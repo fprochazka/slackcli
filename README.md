@@ -159,6 +159,12 @@ Slack API error: ratelimited
 Retry-After: 30s (method: conversations.history)
 ```
 
+Before giving up, slackcli waits out a rate limit up to three times, for as long as Slack's Retry-After asks. Each wait prints a notice on stderr, so a slow command is not mistaken for a hung one:
+
+```
+Rate limited on conversations.history, retrying in 30s (attempt 1/3)
+```
+
 ### Conversations
 
 ```bash
