@@ -185,7 +185,7 @@ slack conversations list
 
 # Filter by type
 slack conversations list --public          # Public channels only
-slack conversations list --private         # Private channels only
+slack conversations list --private         # Private channels only (group DMs are under --dms)
 slack conversations list --dms             # DMs and group DMs only
 
 # Filter by membership

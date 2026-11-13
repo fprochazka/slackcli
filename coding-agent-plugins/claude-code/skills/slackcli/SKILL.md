@@ -63,7 +63,7 @@ Exit code 75 means Slack still rate-limited a call after the automatic retries; 
 ```bash
 slack conversations list              # All conversations (cached)
 slack conversations list --public     # Public channels only
-slack conversations list --private    # Private channels only
+slack conversations list --private    # Private channels only (group DMs are under --dms)
 slack conversations list --dms        # DMs and group DMs only
 slack conversations list --member     # Channels you're a member of
 slack conversations list --non-member # Channels you're not in

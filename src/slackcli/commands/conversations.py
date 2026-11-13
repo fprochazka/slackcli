@@ -283,7 +283,7 @@ def filter_conversations(
     Args:
         conversations: List of conversations to filter.
         dms: Show only DMs and group DMs.
-        private: Show only private channels.
+        private: Show only private channels, never group DMs.
         public: Show only public channels.
         member: Show only channels where user is a member.
         non_member: Show only channels where user is NOT a member.
@@ -299,7 +299,8 @@ def filter_conversations(
         filtered = []
         for convo in result:
             is_dm_match = dms and (convo.is_im or convo.is_mpim)
-            is_private_match = private and convo.is_channel and convo.is_private
+            # Slack flags a group DM as a private channel too (is_channel and is_private); it belongs under --dms only
+            is_private_match = private and convo.is_channel and convo.is_private and not convo.is_mpim
             is_public_match = public and convo.is_channel and not convo.is_private
             if is_dm_match or is_private_match or is_public_match:
                 filtered.append(convo)
