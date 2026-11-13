@@ -286,14 +286,17 @@ def list_messages(
         str | None,
         typer.Option(
             "--since",
-            help="Start time (ISO date, relative like '7d', '1h', '2w', or 'today', 'yesterday').",
+            help=(
+                "Start of the window, inclusive. Times are UTC. Accepts an ISO date or datetime, relative like "
+                "'7d', '1h', '2w', 'today', 'yesterday', or epoch seconds / a Slack ts like 1700000000.123456."
+            ),
         ),
     ] = None,
     until: Annotated[
         str | None,
         typer.Option(
             "--until",
-            help="End time (same format as --since, default: now).",
+            help="End of the window, exclusive (same formats as --since, UTC, default: now).",
         ),
     ] = None,
     today: Annotated[
