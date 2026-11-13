@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
-from ..errors import format_error_with_hint, get_error_code
+from ..errors import fail, get_error_code
 from ..logging import console, error_console, get_logger
 from ..models import format_file_size
 from ..output import output_json
@@ -107,7 +107,7 @@ def format_message_url(
     return base_url
 
 
-def handle_search_error(error: SlackApiError) -> None:
+def handle_search_error(error: SlackApiError) -> NoReturn:
     """Handle a Slack API error from search, with special handling for missing_scope.
 
     Args:
@@ -116,26 +116,15 @@ def handle_search_error(error: SlackApiError) -> None:
     Raises:
         typer.Exit: Always exits after displaying error.
     """
-    error_code = get_error_code(error)
-
-    if error_code == "missing_scope":
+    if get_error_code(error) == "missing_scope":
         # Check if this is specifically about search:read
         needed = error.response.get("needed", "")
         if needed == "search:read" or "search" in str(error.response):
             error_console.print("[red]Error: Missing required OAuth scope: search:read[/red]")
             error_console.print(SEARCH_SCOPE_ERROR)
-        else:
-            error_msg, hint = format_error_with_hint(error)
-            error_console.print(f"[red]{error_msg}[/red]")
-            if hint:
-                error_console.print(f"[dim]Hint: {hint}[/dim]")
-    else:
-        error_msg, hint = format_error_with_hint(error)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
+            raise typer.Exit(1)
 
-    raise typer.Exit(1)
+    fail(error)
 
 
 def output_search_messages_text(

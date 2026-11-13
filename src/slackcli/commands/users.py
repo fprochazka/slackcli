@@ -8,7 +8,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..output import output_json, output_user_text
 from ..users import (
@@ -149,11 +149,7 @@ def list_users(
             console.print(f"\n[dim]Total: {len(filtered_users)} users[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("search")
@@ -232,11 +228,7 @@ def search_users(
             console.print(f"\n[dim]Found {len(matching_users)} users matching '{query}'[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)
 
 
 @app.command("get")
@@ -298,8 +290,4 @@ def get_user_command(
             output_user_text(user)
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e)
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-        raise typer.Exit(1) from None
+        fail(e)

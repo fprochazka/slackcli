@@ -8,7 +8,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from ..context import get_context
-from ..errors import format_error_with_hint
+from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..output import output_json
 from .messages import resolve_channel
@@ -106,12 +106,7 @@ def add_reaction(
             console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e, context={"emoji": emoji_name})
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e, context={"emoji": emoji_name})
 
 
 @app.command("remove")
@@ -178,9 +173,4 @@ def remove_reaction(
             console.print(f"[dim]ts={timestamp}[/dim]")
 
     except SlackApiError as e:
-        error_msg, hint = format_error_with_hint(e, context={"emoji": emoji_name})
-        error_console.print(f"[red]{error_msg}[/red]")
-        if hint:
-            error_console.print(f"[dim]Hint: {hint}[/dim]")
-
-        raise typer.Exit(1) from None
+        fail(e, context={"emoji": emoji_name})
