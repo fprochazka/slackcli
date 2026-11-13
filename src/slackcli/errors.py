@@ -196,6 +196,45 @@ def get_api_method(error: SlackApiError) -> str | None:
     return api_method_from_url(getattr(error.response, "api_url", None))
 
 
+def is_rate_limited(error: SlackApiError) -> bool:
+    """Tell whether Slack refused the call because of a rate limit."""
+    return get_error_code(error) in RATE_LIMIT_ERROR_CODES
+
+
+def exit_code_for(error: SlackApiError) -> int:
+    """Map a Slack API error to the exit code of the command: EXIT_RATE_LIMITED for a rate limit, else 1."""
+    return EXIT_RATE_LIMITED if is_rate_limited(error) else 1
+
+
+def report_error(error: SlackApiError, context: dict[str, str] | None = None, prefix: str = "") -> int:
+    """Print a Slack API error and its hint on stderr, without exiting.
+
+    A rate-limit error also prints the Retry-After value and the API method on a line of its own.
+
+    Args:
+        error: The SlackApiError raised by the API call.
+        context: Optional context for formatting the hint, as in format_error_with_hint.
+        prefix: Optional text printed in front of the error message, such as "Failed to open DM: ".
+
+    Returns:
+        The exit code the error maps to, as exit_code_for gives it.
+    """
+    error_msg, hint = format_error_with_hint(error, context)
+    error_console.print(f"[red]{prefix}{error_msg}[/red]")
+
+    if is_rate_limited(error):
+        retry_after = get_retry_after(error)
+        retry_text = f"{retry_after}s" if retry_after is not None else "unknown"
+        method = get_api_method(error) or "unknown"
+        # One plain, unwrapped line, so a script can parse it from stderr.
+        retry_line = f"Retry-After: {retry_text} (method: {method})"
+        error_console.print(retry_line, markup=False, highlight=False, soft_wrap=True)
+
+    if hint:
+        error_console.print(f"[dim]Hint: {hint}[/dim]")
+    return exit_code_for(error)
+
+
 def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: str = "") -> NoReturn:
     """Print a Slack API error and its hint on stderr, then exit the command.
 
@@ -210,19 +249,4 @@ def fail(error: SlackApiError, context: dict[str, str] | None = None, prefix: st
     Raises:
         typer.Exit: Always.
     """
-    error_msg, hint = format_error_with_hint(error, context)
-    error_console.print(f"[red]{prefix}{error_msg}[/red]")
-
-    exit_code = 1
-    if get_error_code(error) in RATE_LIMIT_ERROR_CODES:
-        retry_after = get_retry_after(error)
-        retry_text = f"{retry_after}s" if retry_after is not None else "unknown"
-        method = get_api_method(error) or "unknown"
-        # One plain, unwrapped line, so a script can parse it from stderr.
-        retry_line = f"Retry-After: {retry_text} (method: {method})"
-        error_console.print(retry_line, markup=False, highlight=False, soft_wrap=True)
-        exit_code = EXIT_RATE_LIMITED
-
-    if hint:
-        error_console.print(f"[dim]Hint: {hint}[/dim]")
-    raise typer.Exit(exit_code) from None
+    raise typer.Exit(report_error(error, context, prefix)) from None

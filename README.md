@@ -569,6 +569,8 @@ Machine-readable format for AI agents:
 
 `text` is what the author wrote. `attachments` holds the link previews Slack and other apps added to the message, which nobody typed. Text output still prints the two together, so a message reads the same as in Slack.
 
+With `--with-threads`, each thread root carries its `replies`. When a thread's replies could not be loaded, the root carries `"replies_error": "<slack error code>"` instead, and text output prints `[replies not loaded: <code>]` under it. The command prints every message it has, then exits with 75 when the cause was a rate limit, or 1 for any other error. After a rate limit the remaining threads are not fetched, and they carry the same `replies_error`.
+
 ## Developing
 
 ### Setup

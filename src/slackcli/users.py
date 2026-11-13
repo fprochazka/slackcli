@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from slack_sdk.errors import SlackApiError
 
 from .cache import get_cache_dir
+from .errors import get_error_code
 from .logging import get_logger
 
 if TYPE_CHECKING:
@@ -24,6 +25,13 @@ logger = get_logger(__name__)
 
 # Cache expiry time in hours (soft expiry - still use if expired, but refresh inline)
 USER_CACHE_EXPIRY_HOURS = 24
+
+# users.info answers that are permanent: the user does not exist or is hidden from this token.
+# The caller then shows the raw user ID. Every other error, a rate limit included, fails the command.
+PERMANENT_USER_ERRORS = frozenset({"user_not_found", "user_not_visible"})
+
+# Written next to the users directory once a users.list walk has gone through every page
+USERS_LIST_MARKER_NAME = "users-list-complete.json"
 
 
 @dataclass
@@ -249,15 +257,21 @@ def fetch_user_from_api(slack: SlackCli, user_id: str) -> UserInfo | None:
         user_id: The Slack user ID.
 
     Returns:
-        The UserInfo, or None if not found.
+        The UserInfo, or None if Slack answers user_not_found or user_not_visible.
+
+    Raises:
+        SlackApiError: For every other failure, a rate limit included.
     """
     try:
         response = slack.client.users_info(user=user_id)
-        if response["ok"]:
-            return UserInfo.from_api(response.get("user", {}))
+        slack._check_response(response, "Fetch user")
     except SlackApiError as e:
-        logger.debug(f"Failed to fetch user {user_id}: {e}")
-    return None
+        code = get_error_code(e)
+        if code in PERMANENT_USER_ERRORS:
+            logger.debug(f"User {user_id} not available: {code}")
+            return None
+        raise
+    return UserInfo.from_api(response.get("user", {}))
 
 
 def get_user(slack: SlackCli, user_id: str, fresh: bool = False) -> UserInfo | None:
@@ -275,6 +289,9 @@ def get_user(slack: SlackCli, user_id: str, fresh: bool = False) -> UserInfo | N
 
     Returns:
         The UserInfo, or None if user could not be found.
+
+    Raises:
+        SlackApiError: When the API call fails for any reason other than user_not_found or user_not_visible.
     """
     # Try to load from cache (unless forcing fresh)
     cached_user = None if fresh else load_user_from_cache(slack.org_name, user_id)
@@ -294,9 +311,9 @@ def get_user(slack: SlackCli, user_id: str, fresh: bool = False) -> UserInfo | N
         save_user_to_cache(slack.org_name, user)
         return user
 
-    # If API fetch failed but we have expired cache, use it as fallback
+    # Slack no longer shows the user, but an expired cache entry still names them
     if cached_user is not None:
-        logger.debug(f"API fetch failed for {user_id}, using expired cache")
+        logger.debug(f"User {user_id} not available from the API, using expired cache")
         return cached_user
 
     return None
@@ -357,6 +374,48 @@ def get_channel_names(slack: SlackCli) -> dict[str, str]:
     return {convo.id: convo.name or "" for convo in conversations if convo.id}
 
 
+def get_users_list_marker_path(org_name: str) -> Path:
+    """Get the path of the file that marks the users cache as holding the full user list.
+
+    The marker sits next to the users directory, not in it, so the per-user glob never reads it.
+
+    Args:
+        org_name: The organization name.
+
+    Returns:
+        Path to the marker file.
+    """
+    return get_cache_dir(org_name) / USERS_LIST_MARKER_NAME
+
+
+def is_users_cache_complete(org_name: str) -> bool:
+    """Tell whether a full users.list walk has finished for this org.
+
+    Single users cached by get_user, or the pages of a walk that failed half way, leave the users
+    directory holding only part of the workspace. Only a finished walk writes the marker.
+
+    Args:
+        org_name: The organization name.
+
+    Returns:
+        True when the marker exists.
+    """
+    return get_users_list_marker_path(org_name).exists()
+
+
+def mark_users_cache_complete(org_name: str, count: int) -> None:
+    """Record that a full users.list walk has just finished.
+
+    Args:
+        org_name: The organization name.
+        count: The number of users the walk returned.
+    """
+    marker_path = get_users_list_marker_path(org_name)
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(marker_path, "w") as f:
+        json.dump({"completed_at": datetime.now().isoformat(), "count": count}, f, indent=2)
+
+
 def load_all_users_from_cache(org_name: str) -> list[UserInfo]:
     """Load all cached users from the users cache directory.
 
@@ -385,44 +444,43 @@ def load_all_users_from_cache(org_name: str) -> list[UserInfo]:
 def fetch_all_users_from_api(slack: SlackCli) -> list[UserInfo]:
     """Fetch all users from the Slack API and cache them.
 
-    This function paginates through all users and saves each one to cache.
+    This function paginates through all users and saves each one to cache. The users cache is marked
+    complete only after the last page, so a walk that fails half way never leaves a partial list that
+    looks complete.
 
     Args:
         slack: The SlackCli client.
 
     Returns:
         List of all UserInfo objects.
+
+    Raises:
+        SlackApiError: When any page fails, a rate limit included. Nothing partial is returned.
     """
     users: list[UserInfo] = []
     cursor: str | None = None
 
-    try:
-        while True:
-            kwargs: dict[str, Any] = {"limit": 200}
-            if cursor:
-                kwargs["cursor"] = cursor
+    while True:
+        kwargs: dict[str, Any] = {"limit": 200}
+        if cursor:
+            kwargs["cursor"] = cursor
 
-            logger.debug(f"Fetching users (cursor: {cursor or 'initial'})")
-            response = slack.client.users_list(**kwargs)
+        logger.debug(f"Fetching users (cursor: {cursor or 'initial'})")
+        response = slack.client.users_list(**kwargs)
+        slack._check_response(response, "List users")
 
-            if not response["ok"]:
-                logger.debug(f"Failed to fetch users: {response.get('error', 'unknown')}")
-                break
+        for user_data in response.get("members", []):
+            user = UserInfo.from_api(user_data)
+            users.append(user)
+            save_user_to_cache(slack.org_name, user)
 
-            for user_data in response.get("members", []):
-                user = UserInfo.from_api(user_data)
-                users.append(user)
-                save_user_to_cache(slack.org_name, user)
+        # Check for more pages
+        response_metadata = response.get("response_metadata", {})
+        cursor = response_metadata.get("next_cursor")
+        if not cursor:
+            break
 
-            # Check for more pages
-            response_metadata = response.get("response_metadata", {})
-            cursor = response_metadata.get("next_cursor")
-            if not cursor:
-                break
-
-    except SlackApiError as e:
-        logger.debug(f"Failed to fetch users list: {e}")
-
+    mark_users_cache_complete(slack.org_name, len(users))
     return users
 
 

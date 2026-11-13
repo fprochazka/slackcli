@@ -115,6 +115,8 @@ slack messages list '#channel' --reactions=names          # Show who reacted
 slack messages list C0123456789 --json                    # Channel ID, JSON output
 ```
 
+With `--with-threads`, a thread whose replies could not be loaded carries `"replies_error": "<slack error code>"` instead of `replies`; the rest of the output is complete, and the command still exits non-zero (75 when the cause was a rate limit).
+
 ### Paginating Further
 
 Every listing reports whether more messages exist on either side of the returned

@@ -217,6 +217,8 @@ class Message:
     replies: list[Message] = field(default_factory=list)
     files: list[FileAttachment] = field(default_factory=list)
     attachments: list[Attachment] = field(default_factory=list)
+    # Slack error code when the replies were requested (--with-threads) but could not be loaded
+    replies_error: str | None = None
 
     @property
     def display_text(self) -> str:
@@ -298,6 +300,7 @@ class Message:
             replies=replies,
             files=files,
             attachments=attachments,
+            replies_error=data.get("replies_error"),
         )
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
@@ -323,6 +326,8 @@ class Message:
 
         if include_replies and self.replies:
             result["replies"] = [r.to_dict(include_replies=False) for r in self.replies]
+        if include_replies and self.replies_error:
+            result["replies_error"] = self.replies_error
 
         return result
 

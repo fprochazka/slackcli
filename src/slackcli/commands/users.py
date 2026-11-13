@@ -15,6 +15,7 @@ from ..users import (
     UserInfo,
     fetch_all_users_from_api,
     get_user,
+    is_users_cache_complete,
     load_all_users_from_cache,
     resolve_user,
 )
@@ -113,11 +114,11 @@ def list_users(
             if not output_json_flag:
                 console.print("[green]User cache updated successfully[/green]\n")
         else:
-            # Try to load from cache first
-            users = load_all_users_from_cache(slack.org_name)
+            # Use the cache only when a full users.list walk has filled it
+            users = load_all_users_from_cache(slack.org_name) if is_users_cache_complete(slack.org_name) else []
             if not users:
                 if not output_json_flag:
-                    console.print("[dim]No cached users found, fetching from Slack API...[/dim]")
+                    console.print("[dim]No cached user list found, fetching from Slack API...[/dim]")
                 users = fetch_all_users_from_api(slack)
                 if not output_json_flag:
                     console.print("[green]User cache updated successfully[/green]\n")
@@ -185,11 +186,11 @@ def search_users(
     slack = ctx.get_slack_client()
 
     try:
-        # Load users from cache, fetch if not available
-        users = load_all_users_from_cache(slack.org_name)
+        # Load users from cache when a full users.list walk has filled it, otherwise fetch them
+        users = load_all_users_from_cache(slack.org_name) if is_users_cache_complete(slack.org_name) else []
         if not users:
             if not output_json_flag:
-                console.print("[dim]No cached users found, fetching from Slack API...[/dim]")
+                console.print("[dim]No cached user list found, fetching from Slack API...[/dim]")
             users = fetch_all_users_from_api(slack)
             if not output_json_flag:
                 console.print("[green]User cache updated successfully[/green]\n")
