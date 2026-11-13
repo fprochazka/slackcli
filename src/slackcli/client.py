@@ -1,7 +1,7 @@
 """Slack CLI client that encapsulates org configuration and WebClient."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from slack_sdk import WebClient
@@ -267,118 +267,125 @@ class SlackCli:
         after_ts: str | None = None,
         before_ts: str | None = None,
     ) -> tuple[list[dict[str, Any]], bool, bool]:
-        """Fetch messages from a channel with peek-ahead has_more detection.
+        """Fetch the oldest (head) or newest (tail) messages of a time window.
+
+        The window is ``oldest <= ts < latest``, narrowed by the exclusive cursors ``after_ts < ts`` and
+        ``ts < before_ts``. Slack's conversations.history walks forward from ``oldest`` when only ``oldest``
+        is sent, and backward from ``latest`` (or from now) in every other case. See
+        docs/slack-api-overview.md. So head sends only a lower bound and filters the upper bound here,
+        and tail always sends an upper bound.
 
         Args:
             channel_id: The channel ID.
-            direction: "head" walks forward from the lower bound, "tail" walks
-                backward from the upper bound.
-            count: Maximum number of messages to return (excluding peek-ahead).
-            oldest: Lower bound window (inclusive as Slack interprets it).
-            latest: Upper bound window.
-            after_ts: Exclusive lower cursor. Combined with ``oldest`` by
-                picking whichever is newer.
-            before_ts: Exclusive upper cursor. Combined with ``latest`` by
-                picking whichever is older.
+            direction: "head" returns the oldest ``count`` messages of the window, "tail" the newest.
+            count: Maximum number of messages to return.
+            oldest: Inclusive lower bound of the window (--since).
+            latest: Exclusive upper bound of the window (--until).
+            after_ts: Exclusive lower cursor (--after).
+            before_ts: Exclusive upper cursor (--before).
 
         Returns:
-            Tuple ``(messages_asc, has_more_before, has_more_after)``.
-            ``messages_asc`` is sorted ascending by ``ts``.
+            Tuple ``(messages_asc, has_more_before, has_more_after)``. ``messages_asc`` is sorted ascending
+            by ``ts``. ``has_more_before`` / ``has_more_after`` are true when a message older / newer than
+            the returned slice exists inside the window ``oldest <= ts < latest``.
         """
+        since = _datetime_micros(oldest) if oldest is not None else None
+        until = _datetime_micros(latest) if latest is not None else None
+        after = _ts_micros(after_ts) if after_ts is not None else None
+        before = _ts_micros(before_ts) if before_ts is not None else None
 
-        def _ts_to_float(value: str) -> float:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return 0.0
+        lower_values = [v for v in (since, after) if v is not None]
+        upper_values = [v for v in (until, before) if v is not None]
+        lower = max(lower_values) if lower_values else None
+        upper = min(upper_values) if upper_values else None
 
-        # Translate cursor + window to Slack API oldest/latest.
-        # "oldest" on the API is a lower bound; "latest" is an upper bound.
-        oldest_values: list[float] = []
-        if oldest is not None:
-            oldest_values.append(oldest.timestamp())
-        if after_ts is not None:
-            oldest_values.append(_ts_to_float(after_ts))
-        api_oldest = max(oldest_values) if oldest_values else None
+        def in_window(ts: int) -> bool:
+            if since is not None and ts < since:
+                return False
+            if after is not None and ts <= after:
+                return False
+            return upper is None or ts < upper
 
-        latest_values: list[float] = []
-        if latest is not None:
-            latest_values.append(latest.timestamp())
-        if before_ts is not None:
-            latest_values.append(_ts_to_float(before_ts))
-        api_latest = min(latest_values) if latest_values else None
+        # The bounds are sent inclusive and the exclusive ones are applied in in_window.
+        base_kwargs: dict[str, Any] = {"channel": channel_id, "inclusive": True}
+        if direction == "head":
+            # Only a lower bound makes Slack walk forward. With no lower bound, 1 is the channel start:
+            # Slack treats 0 as no bound at all and walks backward from now.
+            base_kwargs["oldest"] = _micros_to_ts(lower if lower is not None and lower > 0 else 1_000_000)
+        else:
+            # Any upper bound makes Slack walk backward. With none, a day ahead absorbs clock skew.
+            base_kwargs["latest"] = _micros_to_ts(
+                upper if upper is not None else _datetime_micros(datetime.now(UTC)) + _DAY_MICROS
+            )
+            if lower is not None:
+                base_kwargs["oldest"] = _micros_to_ts(lower)
 
-        peek_target = count + 1  # peek ahead by one
-        messages: list[dict[str, Any]] = []
+        peek_target = count + 1  # one more than the slice, to tell whether more exist on the walk's side
+        collected: list[tuple[int, dict[str, Any]]] = []
         cursor: str | None = None
-        api_has_more_after_fetch = False
+        seen_cursors: set[str] = set()
+        seen_ts: set[int] = set()
+        passed_bound = False
 
-        base_kwargs: dict[str, Any] = {
-            "channel": channel_id,
-            "inclusive": False,
-        }
-        if api_oldest is not None:
-            base_kwargs["oldest"] = f"{api_oldest:.6f}"
-        if api_latest is not None:
-            base_kwargs["latest"] = f"{api_latest:.6f}"
-
-        while len(messages) < peek_target:
+        while len(collected) < peek_target and not passed_bound:
             kwargs = dict(base_kwargs)
-            kwargs["limit"] = min(peek_target - len(messages), 1000)
+            # One extra, for the inclusive bound that in_window may drop
+            kwargs["limit"] = min(peek_target - len(collected) + 1, 1000)
             if cursor:
                 kwargs["cursor"] = cursor
 
-            logger.debug(f"Fetching messages (cursor: {cursor or 'initial'})")
+            logger.debug(f"Fetching messages ({direction}, cursor: {cursor or 'initial'})")
             response = self.client.conversations_history(**kwargs)
             self._check_response(response, "Fetch messages")
 
-            batch = response.get("messages", [])
-            messages.extend(batch)
+            # Slack lists every page newest first, whichever way it walks
+            batch = [(ts, m) for m in response.get("messages", []) if (ts := _ts_micros(m.get("ts", ""))) is not None]
+            batch.sort(key=lambda item: item[0], reverse=direction == "tail")
+            new_in_page = 0
+            for ts, message in batch:
+                if ts in seen_ts:
+                    continue  # a page Slack served again: never list a message twice
+                seen_ts.add(ts)
+                new_in_page += 1
+                if direction == "head" and upper is not None and ts >= upper:
+                    passed_bound = True  # every later message is newer still
+                    break
+                if direction == "tail" and lower is not None and ts < lower:
+                    passed_bound = True  # every later message is older still
+                    break
+                if in_window(ts):
+                    collected.append((ts, message))
 
-            api_has_more_after_fetch = bool(response.get("has_more", False))
-            if not api_has_more_after_fetch:
+            if not response.get("has_more", False):
                 break
-
-            response_metadata = response.get("response_metadata", {})
-            cursor = response_metadata.get("next_cursor")
-            if not cursor:
+            # A page with nothing new, or a cursor already followed, would only repeat itself forever
+            if new_in_page == 0:
+                logger.debug("Stopping the walk: the page added no new message")
                 break
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+            if not cursor or cursor in seen_cursors:
+                if cursor:
+                    logger.debug("Stopping the walk: Slack repeated a cursor")
+                break
+            seen_cursors.add(cursor)
 
-        # Sort ascending by ts so direction-specific trimming is unambiguous.
-        messages.sort(key=lambda m: _ts_to_float(m.get("ts", "0")))
+        collected.sort(key=lambda item: item[0])
+        overflow = len(collected) > count
+        slice_ = collected[:count] if direction == "head" else collected[-count:]
+        messages = [message for _, message in slice_]
 
-        # Decide which peek-ahead side applies. If we got more than `count`,
-        # there's at least one extra item. Drop it from the slice we return
-        # but remember that there are more on that side.
-        overflow = len(messages) > count
-        has_more_before = False
-        has_more_after = False
+        # The walk side: the peek-ahead message proves one more exists inside the window.
+        # The other side: the slice starts at the window edge, unless a cursor moved it inward; the
+        # cursor names a message, which is inside the window when it lies within oldest <= ts < latest.
+        def cursor_in_window(ts: int) -> bool:
+            return (since is None or ts >= since) and (until is None or ts < until)
 
-        if direction == "tail":
-            # We keep the newest `count` messages; older side may have more.
-            if overflow:
-                messages = messages[-count:]
-                has_more_before = True
-            # If the API said has_more while we were still fetching toward
-            # the lower bound and we haven't filled the slice, we also
-            # trust the API signal.
-            elif api_has_more_after_fetch:
-                has_more_before = True
-        else:  # head
-            # Keep the oldest `count` messages; newer side may have more.
-            if overflow:
-                messages = messages[:count]
-                has_more_after = True
-            elif api_has_more_after_fetch:
-                has_more_after = True
-
-        # Cursor-implied has_more: the caller's own cursor proves there is
-        # content on the opposite side of the returned slice, even when the
-        # API's peek-ahead / has_more signal does not reach that far.
-        if before_ts is not None:
-            has_more_after = True
-        if after_ts is not None:
-            has_more_before = True
+        if direction == "head":
+            has_more_after = overflow
+            has_more_before = after is not None and cursor_in_window(after)
+        else:
+            has_more_before = overflow
+            has_more_after = before is not None and cursor_in_window(before)
 
         return messages, has_more_before, has_more_after
 
@@ -1288,3 +1295,34 @@ class SlackCli:
             "query": response.get("query", query),
             "files": response.get("files", {}),
         }
+
+
+_DAY_MICROS = 86_400 * 1_000_000
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _ts_micros(value: str) -> int | None:
+    """Turn a Slack ts such as "1234567890.123456" into whole microseconds, exactly.
+
+    A float would round: a ts has 16 significant digits, at the edge of what a double holds,
+    and the bounds are compared for equality.
+
+    Returns:
+        The microseconds, or None when the value is not a ts.
+    """
+    seconds, _, fraction = str(value).strip().partition(".")
+    if not seconds.isdigit() or (fraction and not fraction.isdigit()):
+        return None
+    return int(seconds) * 1_000_000 + int(fraction[:6].ljust(6, "0") or 0)
+
+
+def _datetime_micros(value: datetime) -> int:
+    """Turn a datetime into whole microseconds since the epoch; a naive one counts as UTC."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return (value - _EPOCH) // timedelta(microseconds=1)
+
+
+def _micros_to_ts(value: int) -> str:
+    """Turn whole microseconds into a Slack ts string."""
+    return f"{value // 1_000_000}.{value % 1_000_000:06d}"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -121,11 +122,17 @@ class FakeWebClient:
     def __init__(self, default_error: SlackApiError | None = None) -> None:
         self.default_error = default_error
         self.results: dict[str, list[dict[str, Any] | SlackApiError]] = {}
+        self.handlers: dict[str, Callable[..., dict[str, Any]]] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     def on(self, method: str, *results: dict[str, Any] | SlackApiError) -> FakeWebClient:
         """Queue the results for an API method, such as "conversations.history"."""
         self.results.setdefault(method, []).extend(results)
+        return self
+
+    def handle(self, method: str, handler: Callable[..., dict[str, Any]]) -> FakeWebClient:
+        """Answer every call to an API method with ``handler(**kwargs)``, after any queued results run out."""
+        self.handlers[method] = handler
         return self
 
     def calls_to(self, method: str) -> list[dict[str, Any]]:
@@ -143,6 +150,8 @@ class FakeWebClient:
             queue = self.results.get(method)
             if queue:
                 result = queue.pop(0)
+            elif method in self.handlers:
+                result = self.handlers[method](**kwargs)
             elif self.default_error is not None:
                 result = self.default_error
             else:
@@ -160,6 +169,54 @@ class FakeWebClient:
             )
 
         return call
+
+
+class FakeChannelHistory:
+    """conversations.history over a fixed set of messages, walking the way Slack walks.
+
+    The rule comes from a live probe and is written down in docs/slack-api-overview.md:
+
+    - only ``oldest`` sent, and above 0: Slack walks forward from it, each page holding the oldest ``limit``
+      messages above the bound, and the next page is newer;
+    - anything else (``latest`` only, both, neither, ``oldest=0``): Slack walks backward from ``latest``, or
+      from now, and the next page is older;
+    - every page lists its messages newest first, whichever way the walk goes;
+    - ``inclusive`` decides whether a message exactly at a bound is returned.
+    """
+
+    def __init__(self, timestamps: list[str]) -> None:
+        self.messages = [{"ts": ts, "text": f"message {ts}", "type": "message"} for ts in timestamps]
+
+    def __call__(
+        self,
+        *,
+        channel: str,
+        limit: int = 100,
+        oldest: str | None = None,
+        latest: str | None = None,
+        inclusive: bool = False,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        lower = Decimal(oldest) if oldest is not None and Decimal(oldest) > 0 else None
+        upper = Decimal(latest) if latest is not None else None
+        forward = lower is not None and upper is None
+
+        def inside(ts: Decimal) -> bool:
+            if lower is not None and (ts < lower or (ts == lower and not inclusive)):
+                return False
+            return upper is None or ts < upper or (ts == upper and inclusive)
+
+        walk = sorted((m for m in self.messages if inside(Decimal(m["ts"]))), key=lambda m: Decimal(m["ts"]))
+        if not forward:
+            walk.reverse()
+        start = int(cursor) if cursor else 0
+        page = walk[start : start + limit]
+        has_more = start + limit < len(walk)
+        return {
+            "messages": sorted(page, key=lambda m: Decimal(m["ts"]), reverse=True),
+            "has_more": has_more,
+            "response_metadata": {"next_cursor": str(start + limit) if has_more else ""},
+        }
 
 
 @pytest.fixture

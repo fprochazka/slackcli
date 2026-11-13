@@ -31,7 +31,7 @@ from ..output import (
     output_thread_text,
 )
 from ..signature import resolve_signature
-from ..time_utils import parse_time_spec
+from ..time_utils import format_time_spec, parse_time_spec
 
 if TYPE_CHECKING:
     from ..client import SlackCli
@@ -475,6 +475,10 @@ def list_messages(
             error_console.print(f"[red]Invalid --until value: {e}[/red]")
             raise typer.Exit(1) from None
 
+    # The window, as the cursors in the output repeat it. Thread view does not apply --since/--until.
+    window_since = format_time_spec(oldest) if oldest is not None and thread_ts is None else None
+    window_until = format_time_spec(latest) if latest is not None and thread_ts is None else None
+
     # Get org context
     ctx = get_context()
     slack = ctx.get_slack_client()
@@ -551,6 +555,8 @@ def list_messages(
                 messages=[],
                 has_more_before=has_more_before,
                 has_more_after=has_more_after,
+                since=window_since,
+                until=window_until,
             )
             output_messages_json(output, with_threads)
         else:
@@ -603,6 +609,8 @@ def list_messages(
     # cursor presence get misled by stale boundary timestamps.
     messages_output.has_more_before = has_more_before
     messages_output.has_more_after = has_more_after
+    messages_output.since = window_since
+    messages_output.until = window_until
     rendered = messages_output.messages
     if rendered:
         if has_more_before:
