@@ -15,7 +15,7 @@ from ..context import get_context
 from ..errors import fail
 from ..logging import console, error_console, get_logger
 from ..models import Conversation
-from ..output import output_conversations_text, output_json
+from ..output import output_conversations_json, output_conversations_text, output_json
 
 if TYPE_CHECKING:
     from ..client import SlackCli
@@ -217,6 +217,7 @@ def is_cache_expired(org_name: str, cache_name: str, version: int) -> bool:
 def load_conversations(
     slack: SlackCli,
     fresh: bool = False,
+    quiet: bool = False,
 ) -> ConversationLoadResult:
     """Load conversations, using cache unless fresh=True or cache expired.
 
@@ -228,15 +229,21 @@ def load_conversations(
     Args:
         slack: The SlackCli client.
         fresh: If True, force refresh from API regardless of cache state.
+        quiet: Print progress to stderr instead of stdout, so stdout carries only the command's output.
 
     Returns:
         ConversationLoadResult with conversations and cache metadata.
     """
+    progress = error_console if quiet else console
     needs_refresh = fresh
 
-    # Check if cache is expired (older than 6 hours)
+    # Check if cache is expired (older than 6 hours, or written by another schema version)
     if not needs_refresh and is_cache_expired(slack.org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION):
-        console.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
+        if get_cache_path(slack.org_name, CACHE_NAME).exists():
+            if load_cache(slack.org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION) is None:
+                progress.print("[dim]Cache was written by another slackcli version, refreshing...[/dim]")
+            else:
+                progress.print("[dim]Cache is older than 6 hours, refreshing...[/dim]")
         needs_refresh = True
 
     # Try to load from cache unless refresh is needed
@@ -245,10 +252,10 @@ def load_conversations(
         if conversations is not None:
             cache_age = get_cache_age(slack.org_name, CACHE_NAME, CONVERSATIONS_CACHE_VERSION)
             if cache_age:
-                console.print(
+                progress.print(
                     f"[dim]Using cached conversations (updated {cache_age.strftime('%Y-%m-%d %H:%M:%S')})[/dim]"
                 )
-                console.print("[dim]Use --refresh to update from Slack API[/dim]\n")
+                progress.print("[dim]Use --refresh to update from Slack API[/dim]\n")
             return ConversationLoadResult(
                 conversations=conversations,
                 from_cache=True,
@@ -257,10 +264,10 @@ def load_conversations(
             )
 
     # Fetch from API
-    console.print("[dim]Fetching conversations from Slack API...[/dim]")
-    conversations = fetch_all_conversations(slack)
+    progress.print("[dim]Fetching conversations from Slack API...[/dim]")
+    conversations = fetch_all_conversations(slack, quiet=quiet)
     save_conversations_to_cache(slack.org_name, conversations)
-    console.print("[green]Cache updated successfully[/green]\n")
+    progress.print("[green]Cache updated successfully[/green]\n")
 
     return ConversationLoadResult(
         conversations=conversations,
@@ -377,13 +384,20 @@ def list_conversations(
             show_default=False,
         ),
     ] = None,
+    output_json_flag: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output as JSON. Progress goes to stderr, so stdout holds only the JSON.",
+        ),
+    ] = False,
 ) -> None:
     """List all Slack conversations (channels, DMs, groups)."""
     ctx = get_context()
     slack = ctx.get_slack_client()
 
     # Load conversations using the centralized function (handles caching internally)
-    result = slack.get_conversations(fresh=refresh)
+    result = slack.get_conversations(fresh=refresh, quiet=output_json_flag)
     conversations = result.conversations
 
     # Apply filters
@@ -408,7 +422,10 @@ def list_conversations(
     # Get user display names (uses per-user file caching with 24h soft expiry)
     users = slack.get_user_display_names(list(user_ids_to_fetch))
 
-    output_conversations_text(filtered_conversations, users)
+    if output_json_flag:
+        output_conversations_json(filtered_conversations, users)
+    else:
+        output_conversations_text(filtered_conversations, users)
 
 
 def resolve_channel_for_membership(slack: SlackCli, channel_ref: str) -> tuple[str, str]:

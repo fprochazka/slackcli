@@ -198,9 +198,15 @@ slack conversations list --archived        # Archived channels only
 
 # Force refresh cache
 slack conversations list --refresh
+
+# JSON output
+slack conversations list --json
+slack conversations list --json --public --no-archived
 ```
 
 Archived channels are listed by default, with `archived` next to their type, as in `C0123456789: old-project (Public Channel, archived)`. `--archived` and `--no-archived` combine with the other filters, so `--public --no-archived` lists the public channels still in use.
+
+`--json` prints `{"conversations": [...], "count": N}`, after the filters and in the same order as the text output. Progress lines go to stderr, so stdout holds only the JSON, also when the cache is refreshed. Each row carries `id`, `name`, `type` (`public_channel`, `private_channel`, `mpim` or `im`), `display_name` (the channel name, the other person's handle for a DM, or the sorted member handles for a group DM), `is_private`, `is_channel`, `is_group`, `is_im`, `is_mpim`, `is_member`, `is_archived`, `topic`, `purpose`, `num_members`, `created`, `user_id` (the other person in a DM) and `member_ids` (the members of a group DM).
 
 #### Membership
 

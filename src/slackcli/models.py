@@ -530,6 +530,45 @@ class Conversation:
             is_archived=data.get("is_archived", False),
         )
 
+    def get_type_slug(self) -> str:
+        """Get the conversation type in Slack's own vocabulary: public_channel, private_channel, mpim or im."""
+        if self.is_im:
+            return "im"
+        if self.is_mpim:
+            return "mpim"
+        if self.is_private or self.is_group:
+            return "private_channel"
+        return "public_channel"
+
+    def to_output_dict(self, display_name: str) -> dict[str, Any]:
+        """Convert to the JSON shape of conversations list, which is kept apart from the cache shape.
+
+        Args:
+            display_name: The channel name, the resolved user name of a DM, or the sorted member names of a group DM.
+
+        Returns:
+            Dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "type": self.get_type_slug(),
+            "display_name": display_name,
+            "name": self.name,
+            "is_private": self.is_private,
+            "is_channel": self.is_channel,
+            "is_group": self.is_group,
+            "is_im": self.is_im,
+            "is_mpim": self.is_mpim,
+            "is_member": self.is_member,
+            "is_archived": self.is_archived,
+            "topic": self.topic,
+            "purpose": self.purpose,
+            "num_members": self.num_members,
+            "created": self.created,
+            "user_id": self.user_id,
+            "member_ids": self.member_ids,
+        }
+
     def get_type(self) -> str:
         """Get a human-readable type string."""
         if self.is_im:
