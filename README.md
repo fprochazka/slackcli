@@ -50,6 +50,9 @@ default_org = "myworkspace"
 # How messages from an AI agent are signed (optional, default "marketing")
 agent_signature = "marketing"  # off | plain | marketing
 
+# Seconds to keep between Slack API calls (optional, default 0 = no pacing)
+min_request_interval = 0.5
+
 [orgs.myworkspace]
 token = "xoxp-your-user-token-here"
 
@@ -74,6 +77,14 @@ agent_signature = "marketing"  # off | plain | marketing
 Detection reads the environment variables the known harnesses set — Claude Code, Gemini CLI, Codex, Cursor, Cline, OpenCode, Goose, Antigravity, Augment, Junie, Kimi Code, Grok Build, OpenClaw, Trae, Pi — plus the generic `AGENT=<slug>` and `AI_AGENT=<slug>`, and the file Devin leaves behind. Harnesses that announce nothing (GitHub Copilot, Aider, Windsurf, Warp) are not guessed at. `src/slackcli/signature.py` holds the table and is the one place to extend.
 
 Signing turns a plain message into a section block plus the footer, so a signed message reads exactly like an unsigned one with a line of grey type under it. A body too long for a single section keeps its plain form and takes the footer as a trailing italic line instead.
+
+### Request pacing
+
+```toml
+min_request_interval = 0.5  # seconds, default 0
+```
+
+`min_request_interval` keeps at least that many seconds between the end of one Slack API call and the start of the next, so a long listing such as `messages list --with-threads` stays under Slack's rate limits instead of running into them. `SLACK_MIN_REQUEST_INTERVAL` takes the same value and wins over the config key; an unset or empty variable leaves the config file in charge. When Slack rate-limits a call anyway, the retry follows the Retry-After wait directly, without the pacing interval added on top. The pacing applies within one process only: two slackcli commands running at the same time each keep their own spacing and can still hit the limit together.
 
 ### Workspaces
 
@@ -133,6 +144,7 @@ slack --help                       # Show help
 | `SLACK_ORG` | Default organization name (alternative to `--org`) |
 | `SLACK_CONFIG` | Path to config file (alternative to `--config`) |
 | `SLACK_AGENT_SIGNATURE` | How messages from an AI agent are signed: `off`, `plain` or `marketing`; overrides the `agent_signature` config key |
+| `SLACK_MIN_REQUEST_INTERVAL` | Seconds to keep between Slack API calls, such as `0.5`; overrides the `min_request_interval` config key |
 
 ```bash
 # Using environment variables

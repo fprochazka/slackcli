@@ -47,7 +47,11 @@ class Context:
         from .client import SlackCli
 
         org = self.get_org()
-        return SlackCli(org_name=org.name, token=org.token)
+        return SlackCli(
+            org_name=org.name,
+            token=org.token,
+            min_request_interval=self.get_config().min_request_interval,
+        )
 
 
 # Global context instance

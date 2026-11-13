@@ -1,5 +1,6 @@
 """Configuration management for Slack CLI."""
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,9 @@ DEFAULT_CONFIG_PATH = Path.home() / ".config" / "slackcli" / "config.toml"
 
 # Overrides the top-level 'agent_signature' key of the config file.
 AGENT_SIGNATURE_ENV_VAR = "SLACK_AGENT_SIGNATURE"
+
+# Overrides the top-level 'min_request_interval' key of the config file.
+MIN_REQUEST_INTERVAL_ENV_VAR = "SLACK_MIN_REQUEST_INTERVAL"
 
 
 @dataclass
@@ -33,6 +37,8 @@ class Config:
     workspace_index: dict[str, str] = field(default_factory=dict)
     # How messages sent from an AI agent are signed: off, plain or marketing.
     agent_signature: str = "marketing"
+    # Seconds kept between the end of one Slack API call and the start of the next; 0 turns pacing off.
+    min_request_interval: float = 0.0
 
     def describe_orgs(self) -> str:
         """Describe the configured orgs and their workspace names.
@@ -178,6 +184,55 @@ def _parse_agent_signature(data: dict) -> str:
     return _validate_signature_mode(data.get("agent_signature", "marketing"), "'agent_signature'")
 
 
+def _validate_min_request_interval(value: object, source: str) -> float:
+    """Check one min_request_interval value.
+
+    Args:
+        value: The raw value: a string from the environment, or a TOML value from the config file.
+        source: How the value is named in the error message.
+
+    Returns:
+        The interval in seconds.
+
+    Raises:
+        ValueError: If the value is not a finite number of seconds, 0 or more.
+    """
+    error = ValueError(f"Invalid {source}: expected a number of seconds, 0 or more, such as 0.5")
+    if isinstance(value, bool):
+        raise error
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            raise error from None
+    if not isinstance(value, int | float) or not math.isfinite(value) or value < 0:
+        raise error
+    return float(value)
+
+
+def _parse_min_request_interval(data: dict) -> float:
+    """Read the minimum interval between API calls from the environment, then from the config file.
+
+    SLACK_MIN_REQUEST_INTERVAL wins over the top-level 'min_request_interval' key. A variable that
+    is unset, empty or whitespace-only counts as absent, so exporting an empty value leaves the
+    config file in charge.
+
+    Args:
+        data: The parsed config file.
+
+    Returns:
+        The interval in seconds, or 0 when neither source sets one.
+
+    Raises:
+        ValueError: If either value is not a number of seconds, 0 or more.
+    """
+    from_env = os.environ.get(MIN_REQUEST_INTERVAL_ENV_VAR)
+    if from_env is not None and from_env.strip():
+        return _validate_min_request_interval(from_env, MIN_REQUEST_INTERVAL_ENV_VAR)
+
+    return _validate_min_request_interval(data.get("min_request_interval", 0), "'min_request_interval'")
+
+
 def load_config(config_path: Path | None = None) -> Config:
     """Load configuration from TOML file.
 
@@ -207,6 +262,7 @@ def load_config(config_path: Path | None = None) -> Config:
     config = Config()
     config.default_org = data.get("default_org")
     config.agent_signature = _parse_agent_signature(data)
+    config.min_request_interval = _parse_min_request_interval(data)
 
     orgs_data = data.get("orgs", {})
     for org_name, org_data in orgs_data.items():

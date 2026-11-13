@@ -11,7 +11,10 @@ import pytest
 from slack_sdk import WebClient
 from slack_sdk.http_retry import HttpRequest, HttpResponse, RetryState
 
-from slackcli.retry import NoticeRateLimitErrorRetryHandler, create_web_client
+from slackcli.client import SlackCli
+from slackcli.config import Config, OrgConfig
+from slackcli.context import Context
+from slackcli.retry import NoticeRateLimitErrorRetryHandler, PacedWebClient, RequestPacer, create_web_client
 
 
 class FakeSleep:
@@ -145,3 +148,91 @@ def test_web_client_prints_the_notice_and_retries(
     assert capsys.readouterr().err == "Rate limited on conversations.list, retrying in 4s (attempt 1/3)\n"
     assert len(sleep.waits) == 1
     assert 4 <= sleep.waits[0] < 5
+
+
+class FakeClock:
+    """A monotonic clock that only moves when the code under test sleeps, or when the test moves it."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def test_pacer_with_zero_interval_never_waits() -> None:
+    clock = FakeClock()
+    pacer = RequestPacer(0, clock=clock, sleep=clock.sleep)
+
+    for _ in range(3):
+        pacer.wait()
+        pacer.mark()
+
+    assert clock.sleeps == []
+
+
+def test_pacer_waits_out_the_rest_of_the_interval_from_the_end_of_the_last_call() -> None:
+    clock = FakeClock()
+    pacer = RequestPacer(1.0, clock=clock, sleep=clock.sleep)
+
+    pacer.wait()  # the first call never waits
+    clock.now += 0.3  # the call itself takes 0.3s
+    pacer.mark()
+    clock.now += 0.2  # the caller works for 0.2s before the next call
+    pacer.wait()
+
+    assert clock.sleeps == [pytest.approx(0.8)]
+
+    pacer.mark()
+    clock.now += 1.5  # more than the interval has already passed
+    pacer.wait()
+
+    assert clock.sleeps == [pytest.approx(0.8)]
+
+
+def test_create_web_client_paces_with_the_configured_interval() -> None:
+    client = create_web_client(token="xoxp-test-token", min_request_interval=0.5)
+
+    assert isinstance(client, PacedWebClient)
+    assert client.pacer.min_interval == 0.5
+
+
+def test_rate_limit_wait_and_pacing_do_not_add_up(
+    rate_limit_once_server: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = FakeClock()
+    pacer = RequestPacer(1.0, clock=clock, sleep=clock.sleep)
+    client = PacedWebClient(
+        token="xoxp-test-token",
+        base_url=rate_limit_once_server,
+        pacer=pacer,
+        retry_handlers=[NoticeRateLimitErrorRetryHandler(sleep=clock.sleep)],
+    )
+
+    client.conversations_list()  # 429 with Retry-After 4, then 200
+    client.conversations_list()  # 200
+
+    # One rate-limit wait of 4-5s with no pacing on top of it, then one full interval before the next call
+    assert len(clock.sleeps) == 2
+    assert 4 <= clock.sleeps[0] < 5
+    assert clock.sleeps[1] == pytest.approx(1.0)
+    assert RateLimitOnceServer.calls == 3
+    capsys.readouterr()
+
+
+def test_slack_client_gets_the_interval_from_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: list[dict] = []
+    monkeypatch.setattr("slackcli.client.create_web_client", lambda **kwargs: created.append(kwargs) or object())
+    config = Config(orgs={"acme": OrgConfig(name="acme", token="xoxp-test-token")}, default_org="acme")
+    config.min_request_interval = 0.25
+
+    slack = Context(config=config).get_slack_client()
+    slack.client  # noqa: B018 - creates the WebClient
+
+    assert isinstance(slack, SlackCli)
+    assert created == [{"token": "xoxp-test-token", "min_request_interval": 0.25}]

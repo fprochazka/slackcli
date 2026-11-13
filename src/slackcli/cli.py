@@ -8,7 +8,7 @@ import typer
 from slack_sdk.errors import SlackApiError
 
 from . import __version__
-from .config import AGENT_SIGNATURE_ENV_VAR, Config, get_config_path, load_config
+from .config import AGENT_SIGNATURE_ENV_VAR, MIN_REQUEST_INTERVAL_ENV_VAR, Config, get_config_path, load_config
 from .context import get_context
 from .errors import fail
 from .logging import console, error_console, get_logger, setup_logging
@@ -154,6 +154,7 @@ def show_config() -> None:
     config_display = {
         "default_org": config.default_org,
         "agent_signature": config.agent_signature,
+        "min_request_interval": config.min_request_interval,
         "orgs": {
             name: {
                 "token": org.token[:20] + "..." if len(org.token) > 20 else org.token,
@@ -184,6 +185,12 @@ def show_config() -> None:
     env_signature = os.environ.get(AGENT_SIGNATURE_ENV_VAR)
     if env_signature and env_signature.strip():
         console.print(f"[dim]Using agent_signature from {AGENT_SIGNATURE_ENV_VAR}: {config.agent_signature}[/dim]")
+
+    env_interval = os.environ.get(MIN_REQUEST_INTERVAL_ENV_VAR)
+    if env_interval and env_interval.strip():
+        console.print(
+            f"[dim]Using min_request_interval from {MIN_REQUEST_INTERVAL_ENV_VAR}: {config.min_request_interval}[/dim]"
+        )
 
 
 def _hoist_global_options(argv: list[str]) -> list[str]:

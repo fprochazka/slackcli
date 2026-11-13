@@ -24,13 +24,15 @@ class SlackCli:
 
     org_name: str
     token: str
+    # Seconds kept between the end of one API call and the start of the next; 0 turns pacing off.
+    min_request_interval: float = 0.0
     _client: WebClient | None = field(default=None, repr=False)
 
     @property
     def client(self) -> WebClient:
         """Lazily create WebClient with retry handlers."""
         if self._client is None:
-            self._client = create_web_client(token=self.token)
+            self._client = create_web_client(token=self.token, min_request_interval=self.min_request_interval)
         return self._client
 
     def _check_response(self, response: dict, operation: str = "API call") -> dict:
