@@ -552,7 +552,7 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
     """Replace Slack mention macros with readable names.
 
     Handles:
-    - <@U08GTCPJW95> - user mentions, replaced with @username
+    - <@U0123456789> - user mentions, replaced with @username
     - <#C01234567> or <#C01234567|channel-name> - channel mentions, replaced with #channel-name
     - <https://example.com|link text> - links, replaced with the URL
     - <!subteam^S123|@team-name> - user group mentions, replaced with @team-name
@@ -568,7 +568,7 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
     if not text:
         return text
 
-    # Replace user mentions: <@U08GTCPJW95> or <@U08GTCPJW95|display_name>
+    # Replace user mentions: <@U0123456789> or <@U0123456789|display_name>
     def replace_user_mention(match: re.Match) -> str:
         user_id = match.group(1)
         username = users.get(user_id, user_id)

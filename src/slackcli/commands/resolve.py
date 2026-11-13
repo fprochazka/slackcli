@@ -83,7 +83,7 @@ def _convert_url_timestamp(ts_without_dot: str) -> str:
 
     Returns:
         The timestamp with a dot before the last 6 digits, for example
-        ``p1769432401438239`` becomes ``1769432401.438239``.
+        ``p1234567892345678`` becomes ``1234567892.345678``.
 
     Raises:
         ValueError: If the timestamp is too short.
@@ -98,14 +98,14 @@ def parse_slack_url(url: str) -> ParsedSlackUrl:
     """Parse a Slack URL and detect what it points at.
 
     URL formats:
-    - Message: https://example.slack.com/archives/C09D1VBRJ76/p1769432401438239
-    - Thread reply: https://example.slack.com/archives/C09D1VBRJ76/p1769422824936319?thread_ts=1769420875.054379&cid=C09D1VBRJ76
-    - Conversation: https://example.slack.com/archives/C09D1VBRJ76
-    - Conversation (legacy): https://example.slack.com/messages/C09D1VBRJ76
-    - Conversation (web client): https://app.slack.com/client/T0123456/C09D1VBRJ76
-    - Thread (web client): https://app.slack.com/client/T0123456/C09D1VBRJ76/thread/C09D1VBRJ76-1769420875.054379
-    - User: https://example.slack.com/team/U08GTCPJW95
-    - File: https://example.slack.com/files/U08GTCPJW95/F0123456789/report.pdf
+    - Message: https://example.slack.com/archives/C0123456789/p1234567892345678
+    - Thread reply: https://example.slack.com/archives/C0123456789/p1234567891234567?thread_ts=1234567890.123456&cid=C0123456789
+    - Conversation: https://example.slack.com/archives/C0123456789
+    - Conversation (legacy): https://example.slack.com/messages/C0123456789
+    - Conversation (web client): https://app.slack.com/client/T0123456/C0123456789
+    - Thread (web client): https://app.slack.com/client/T0123456/C0123456789/thread/C0123456789-1234567890.123456
+    - User: https://example.slack.com/team/U0123456789
+    - File: https://example.slack.com/files/U0123456789/F0123456789/report.pdf
 
     Args:
         url: The Slack URL.
@@ -352,13 +352,13 @@ def resolve_command(
     Handles links to a message, a thread, a conversation, a user and a file.
 
     Examples:
-        slack resolve 'https://example.slack.com/archives/C09D1VBRJ76/p1769432401438239'
-        slack resolve 'https://example.slack.com/archives/C09D1VBRJ76/p1769422824936319?thread_ts=1769420875.054379&cid=C09D1VBRJ76'
-        slack resolve 'https://example.slack.com/archives/C09D1VBRJ76'
-        slack resolve 'https://example.slack.com/team/U08GTCPJW95'
-        slack resolve 'https://example.slack.com/files/U08GTCPJW95/F0123456789/report.pdf'
-        slack resolve 'https://app.slack.com/client/T0123456/C09D1VBRJ76'
-        slack resolve 'https://example.slack.com/archives/C09D1VBRJ76/p1769432401438239' --json
+        slack resolve 'https://example.slack.com/archives/C0123456789/p1234567892345678'
+        slack resolve 'https://example.slack.com/archives/C0123456789/p1234567891234567?thread_ts=1234567890.123456&cid=C0123456789'
+        slack resolve 'https://example.slack.com/archives/C0123456789'
+        slack resolve 'https://example.slack.com/team/U0123456789'
+        slack resolve 'https://example.slack.com/files/U0123456789/F0123456789/report.pdf'
+        slack resolve 'https://app.slack.com/client/T0123456/C0123456789'
+        slack resolve 'https://example.slack.com/archives/C0123456789/p1234567892345678' --json
     """
     # Parse the URL
     try:
