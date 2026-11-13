@@ -70,7 +70,10 @@ slack conversations list --non-member # Channels you're not in
 slack conversations list --no-archived # Hide archived channels (shown by default, marked "archived")
 slack conversations list --archived   # Archived channels only
 slack conversations list --refresh    # Force cache refresh
+slack conversations list --json       # {"conversations": [...], "count": N}; combine with any filter
 ```
+
+Each JSON row has `id`, `name`, `type` (`public_channel`/`private_channel`/`mpim`/`im`), `display_name` (DM and group DM names resolved), `is_member`, `is_archived`, `num_members`, `topic`, `purpose` and the other flags. stdout holds only the JSON; progress goes to stderr.
 
 ## Messages
 

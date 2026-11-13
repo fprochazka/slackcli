@@ -462,6 +462,49 @@ def output_resolved_file_text(resolved: ResolvedFile) -> None:
     print(f"To download: slack files download {attachment.id}")
 
 
+def get_conversation_display_name(convo: Conversation, users: dict[str, str]) -> str:
+    """Get the display name of a conversation.
+
+    Args:
+        convo: The conversation.
+        users: Dictionary mapping user ID to display name.
+
+    Returns:
+        The other user's name for a DM, the sorted member names for a group DM, the channel name otherwise.
+    """
+    if convo.is_im and convo.user_id:
+        return users.get(convo.user_id, convo.user_id)
+    if convo.is_mpim and convo.member_ids:
+        # Sort member names alphabetically
+        member_names = sorted(users.get(uid, uid) for uid in convo.member_ids)
+        return ", ".join(member_names)
+    return convo.name or "(no name)"
+
+
+def _sort_conversations(conversations: list[Conversation], users: dict[str, str]) -> list[Conversation]:
+    """Sort conversations by type, then by display name."""
+    return sorted(
+        conversations,
+        key=lambda c: (
+            0 if c.is_channel and not c.is_private else 1 if c.is_channel else 2 if c.is_group else 3,
+            get_conversation_display_name(c, users).lower(),
+        ),
+    )
+
+
+def output_conversations_json(conversations: list[Conversation], users: dict[str, str]) -> None:
+    """Output conversations as JSON, in the same order as the text output.
+
+    Args:
+        conversations: List of conversations to display.
+        users: Dictionary mapping user ID to display name.
+    """
+    rows = [
+        c.to_output_dict(get_conversation_display_name(c, users)) for c in _sort_conversations(conversations, users)
+    ]
+    output_json({"conversations": rows, "count": len(rows)})
+
+
 def output_conversations_text(
     conversations: list[Conversation],
     users: dict[str, str],
@@ -472,28 +515,8 @@ def output_conversations_text(
         conversations: List of conversations to display.
         users: Dictionary mapping user ID to display name.
     """
-
-    def get_display_name(convo: Conversation) -> str:
-        """Get the display name for a conversation."""
-        if convo.is_im and convo.user_id:
-            return users.get(convo.user_id, convo.user_id)
-        if convo.is_mpim and convo.member_ids:
-            # Sort member names alphabetically
-            member_names = sorted(users.get(uid, uid) for uid in convo.member_ids)
-            return ", ".join(member_names)
-        return convo.name or "(no name)"
-
-    # Sort by type and name
-    sorted_convos = sorted(
-        conversations,
-        key=lambda c: (
-            0 if c.is_channel and not c.is_private else 1 if c.is_channel else 2 if c.is_group else 3,
-            get_display_name(c).lower(),
-        ),
-    )
-
-    for convo in sorted_convos:
-        display_name = get_display_name(convo)
+    for convo in _sort_conversations(conversations, users):
+        display_name = get_conversation_display_name(convo, users)
         convo_type = convo.get_type()
         if convo.is_archived:
             convo_type += ", archived"

@@ -59,18 +59,19 @@ class SlackCli:
     # Conversations
     # -------------------------------------------------------------------------
 
-    def get_conversations(self, fresh: bool = False) -> "ConversationLoadResult":
+    def get_conversations(self, fresh: bool = False, quiet: bool = False) -> "ConversationLoadResult":
         """Load conversations with caching.
 
         Args:
             fresh: If True, force refresh from API regardless of cache state.
+            quiet: Print progress to stderr instead of stdout.
 
         Returns:
             ConversationLoadResult with conversations and cache metadata.
         """
         from .commands.conversations import load_conversations
 
-        return load_conversations(self, fresh=fresh)
+        return load_conversations(self, fresh=fresh, quiet=quiet)
 
     def get_conversations_from_cache(self) -> list["Conversation"] | None:
         """Load conversations from cache, without an API call unless the cache was written by another schema version.
