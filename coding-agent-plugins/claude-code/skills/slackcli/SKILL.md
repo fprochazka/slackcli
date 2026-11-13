@@ -98,6 +98,8 @@ Allowed combinations: `--head N` alone, `--tail N` alone, `--after TS` alone,
 Direction flags compose with time-window flags (`--since`, `--until`, `--today`,
 `--last-7d`, `--last-30d`), which are orthogonal bounds on the window.
 
+`--since` is inclusive and `--until` exclusive. Both take ISO dates or datetimes, relative times (`7d`, `1h`), `today`/`yesterday`, or epoch seconds / a Slack ts (`1700000000.123456`). All times are UTC; an ISO value without a zone is read as UTC.
+
 ```bash
 slack messages list '#channel'                                      # Last 25 messages
 slack messages list '#channel' --tail 5                             # Last 5 messages
@@ -113,6 +115,7 @@ slack messages list '#channel' --last-30d                 # Last 30 days
 slack messages list '#channel' --since 2024-01-15         # Since specific date
 slack messages list '#channel' --since 7d --until 3d      # Relative range
 slack messages list '#channel' --head 100 --since 2024-01-01 --until 2024-02-01
+slack messages list '#channel' --since 1700000000 --until 1700086400   # Epoch seconds or a Slack ts
 
 slack messages list '#channel' --with-threads             # Include thread replies
 slack messages list '#channel' --reactions=counts         # Show reaction counts

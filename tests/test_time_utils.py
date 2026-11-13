@@ -136,6 +136,36 @@ class TestParseTimeSpec:
         # All should be the same (start of today)
         assert result1 == result2 == result3
 
+    def test_epoch_seconds(self) -> None:
+        """Epoch seconds are read as UTC."""
+        assert parse_time_spec("1700000000") == datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
+
+    def test_slack_ts_is_the_same_instant_as_its_epoch(self) -> None:
+        """A Slack message timestamp and the epoch with the same digits name the same instant."""
+        assert parse_time_spec("1700000000.000000") == parse_time_spec("1700000000")
+        assert parse_time_spec("1700000000.123456") == datetime(2023, 11, 14, 22, 13, 20, 123456, tzinfo=UTC)
+
+    def test_slack_ts_keeps_microseconds_exactly(self) -> None:
+        """The fraction is read as digits, not through a float, so a ts survives the round trip."""
+        assert parse_time_spec("1700000000.000001").microsecond == 1
+        assert parse_time_spec("1700000000.5").microsecond == 500000
+        assert parse_time_spec("1700000000.1234567").microsecond == 123456
+
+    def test_eight_digit_date_stays_a_date(self) -> None:
+        """A compact ISO date is not mistaken for epoch seconds."""
+        assert parse_time_spec("20240115") == datetime(2024, 1, 15, tzinfo=UTC)
+
+    @pytest.mark.parametrize("spec", ["7", "123456789", "1700000000.", ".5", "1700000000.12.3", "-1700000000"])
+    def test_short_or_malformed_numbers_are_errors(self, spec: str) -> None:
+        """A number shorter than 10 digits, or one that is not a plain epoch or ts, is still rejected."""
+        with pytest.raises(ValueError, match="Cannot parse time specification"):
+            parse_time_spec(spec)
+
+    def test_out_of_range_epoch_is_an_error(self) -> None:
+        """An epoch too large for a datetime fails with the usual error instead of crashing."""
+        with pytest.raises(ValueError, match="Cannot parse time specification"):
+            parse_time_spec("99999999999999999999")
+
     def test_invalid_spec_raises(self) -> None:
         """Test that invalid specifications raise ValueError."""
         with pytest.raises(ValueError, match="Cannot parse time specification"):

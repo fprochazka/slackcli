@@ -71,6 +71,33 @@ def parse_iso_datetime(spec: str) -> datetime | None:
         return None
 
 
+# Epoch seconds or a Slack message timestamp: 10 or more digits, so a short number or an 8-digit date never matches
+EPOCH_PATTERN = re.compile(r"^(\d{10,})(?:\.(\d+))?$")
+
+
+def parse_epoch(spec: str) -> datetime | None:
+    """Parse epoch seconds or a Slack message timestamp, such as "1700000000" or "1700000000.123456".
+
+    Args:
+        spec: The specification string.
+
+    Returns:
+        The UTC datetime, exact to the microsecond (further digits are dropped), or None if the format does not match.
+
+    Raises:
+        ValueError: If the number matches but lies outside the range a datetime can hold.
+    """
+    match = EPOCH_PATTERN.match(spec.strip())
+    if match is None:
+        return None
+    seconds = int(match.group(1))
+    microseconds = int((match.group(2) or "").ljust(6, "0")[:6])
+    try:
+        return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=microseconds)
+    except (OverflowError, OSError, ValueError) as e:
+        raise ValueError(f"Cannot parse time specification: {spec} (out of range)") from e
+
+
 def parse_time_spec(spec: str) -> datetime:
     """Parse a time specification into a datetime for message filtering.
 
@@ -81,6 +108,8 @@ def parse_time_spec(spec: str) -> datetime:
     - ISO datetime: "2024-01-15T10:30:00"
     - Relative: "7d", "1h", "2w", "30m"
     - Keywords: "today", "yesterday", "now"
+    - Epoch seconds or a Slack timestamp: "1700000000", "1700000000.123456" (10 or more digits,
+      checked after the ISO formats, so "20240115" stays a date and "7" stays an error)
 
     Args:
         spec: The time specification string.
@@ -113,6 +142,11 @@ def parse_time_spec(spec: str) -> datetime:
         # If no timezone, assume UTC
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
+        return dt
+
+    # Epoch seconds or a Slack message timestamp
+    dt = parse_epoch(spec)
+    if dt is not None:
         return dt
 
     raise ValueError(f"Cannot parse time specification: {spec}")

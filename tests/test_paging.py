@@ -249,3 +249,14 @@ def test_a_repeated_cursor_ends_the_walk(run_cli: RunCli, fake_slack: FakeWebCli
     # The second page still counts; the walk stops before following "same" a second time
     assert [m["ts"] for m in page["messages"]] == [ts(WINDOW_START + 60), ts(WINDOW_START + 120)]
     assert len(history_calls(fake_slack)) == 2
+
+
+def test_epoch_and_slack_ts_bounds_select_the_same_window_as_iso(run_cli: RunCli, fake_slack: FakeWebClient) -> None:
+    fake_slack.handle("conversations.history", FakeChannelHistory(window_channel()))
+
+    iso = list_json(run_cli, "--head", "1000", "--since", SINCE, "--until", UNTIL)
+    epoch = list_json(run_cli, "--head", "1000", "--since", str(WINDOW_START), "--until", f"{WINDOW_END}.000000")
+
+    assert [m["ts"] for m in epoch["messages"]] == [m["ts"] for m in iso["messages"]]
+    assert len(epoch["messages"]) == 450
+    assert (epoch["since"], epoch["until"]) == (iso["since"], iso["until"])

@@ -252,6 +252,7 @@ slack messages list '#general' --last-30d
 slack messages list '#general' --since 2024-01-15
 slack messages list '#general' --since 7d --until 3d
 slack messages list '#general' --head 100 --since 2024-01-01 --until 2024-02-01
+slack messages list '#general' --since 1700000000 --until 1700086400.000000   # epoch seconds or Slack ts
 
 # Include thread replies inline
 slack messages list '#general' --with-threads
@@ -323,7 +324,7 @@ slack messages delete '#general' 1234567890.123456
 slack messages delete '#general' 1234567890.123456 --force
 ```
 
-The window is `--since <= ts < --until`, and `--after` / `--before` are exclusive. `--head` returns the oldest messages of the window, `--tail` the newest, whichever bounds are given: `--head 5` alone is the first five messages of the channel, and `--today` (tail 25) the newest 25 of today. `has_more_before` and `has_more_after` count only messages inside the window.
+The window is `--since <= ts < --until`, and `--after` / `--before` are exclusive. `--since` and `--until` take an ISO date or datetime, a relative time such as `7d`, `1h` or `2w`, `today` / `yesterday`, or epoch seconds and Slack message timestamps (`1700000000`, `1700000000.123456`, at least 10 digits). Every time is UTC: an ISO value without a zone is read as UTC, not local time. `--head` returns the oldest messages of the window, `--tail` the newest, whichever bounds are given: `--head 5` alone is the first five messages of the channel, and `--today` (tail 25) the newest 25 of today. `has_more_before` and `has_more_after` count only messages inside the window.
 
 Messages with file attachments will show the file name, size, and download URL.
 
