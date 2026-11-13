@@ -56,6 +56,8 @@ If the user hasn't specified a workspace and no default is configured, **ask the
 | `--verbose` | Enable debug logging |
 | `--json` | JSON output (available on most commands) |
 
+Exit code 75 means Slack still rate-limited a call after the automatic retries; stderr then carries `Retry-After: <N>s (method: <api method>)`, so wait that long and run the command again. Any other failure exits with 1, and errors always go to stderr, never to stdout.
+
 ## Conversations
 
 ```bash
