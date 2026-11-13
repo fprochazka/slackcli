@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -58,8 +59,10 @@ def user_data(user_id: str, name: str) -> dict[str, Any]:
 
 
 def bump(monkeypatch: pytest.MonkeyPatch, target: str) -> None:
-    """Pretend the code now writes schema version 2, so what was cached at version 1 is from an older version."""
-    monkeypatch.setattr(target, 2)
+    """Pretend the code now writes the next schema version, so what is cached now is from an older version."""
+    module_name, _, attribute = target.rpartition(".")
+    current = getattr(importlib.import_module(module_name), attribute)
+    monkeypatch.setattr(target, current + 1)
 
 
 def strip_version(path: Path, *keys: str) -> None:
@@ -93,12 +96,16 @@ def test_conversations_cache_of_another_version_is_expired(monkeypatch: pytest.M
     assert is_cache_expired(ORG, CACHE_NAME, conversations_module.CONVERSATIONS_CACHE_VERSION)
 
 
-def test_conversations_cache_without_a_version_counts_as_version_1(isolated_cache_dir: Path) -> None:
+def test_conversations_cache_without_a_version_counts_as_version_1(
+    isolated_cache_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     save_conversations_to_cache(ORG, [conversation()])
     strip_version(isolated_cache_dir / ORG / "conversations.json", "metadata")
 
-    assert conversations_module.CONVERSATIONS_CACHE_VERSION == 1
+    monkeypatch.setattr("slackcli.commands.conversations.CONVERSATIONS_CACHE_VERSION", 1)
     assert load_conversations_from_cache(ORG) is not None
+    monkeypatch.setattr("slackcli.commands.conversations.CONVERSATIONS_CACHE_VERSION", 2)
+    assert load_conversations_from_cache(ORG) is None
 
 
 def test_conversations_list_refetches_a_cache_of_another_version(
