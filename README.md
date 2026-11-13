@@ -534,12 +534,17 @@ Human-readable format with resolved usernames and mentions:
 ```
 2024-01-15 10:30:45  @john.doe
   Hello team, here's the update...
-  [3 replies, thread_ts=1234567890.123456]
+  [3 replies, last reply 2024-01-15 11:02:13, thread_ts=1234567890.123456]
   :+1: 5 :heart: 2
 
 2024-01-15 10:32:10  @jane.smith
   Thanks for sharing!
+
+2024-01-15 10:40:00  Build Pipeline
+  Build #42 passed
 ```
+
+A message posted by a webhook or a legacy integration has no user. Its header shows the name the bot posted under, or else the bot's profile name, without the `@`, because that name is not a handle you can pass back to the CLI.
 
 ### JSON Output
 
@@ -554,9 +559,16 @@ Machine-readable format for AI agents:
       "ts": "1234567890.123456",
       "user_id": "U0123456789",
       "user_name": "john.doe",
+      "bot_id": null,
+      "bot_name": null,
+      "username": null,
+      "subtype": null,
       "text": "Hello team...",
       "thread_ts": null,
       "reply_count": 3,
+      "reply_users_count": 2,
+      "reply_user_ids": ["U0123456789", "B0123456789"],
+      "latest_reply": "1234567890.987654",
       "reactions": [{"name": "thumbsup", "count": 5, "users": ["alice", "bob"]}],
       "files": [
         {
@@ -584,6 +596,13 @@ Machine-readable format for AI agents:
 ```
 
 `text` is what the author wrote. `attachments` holds the link previews Slack and other apps added to the message, which nobody typed. Text output still prints the two together, so a message reads the same as in Slack.
+
+Every message carries every field below, `null`, `0` or `[]` when Slack sent nothing for it:
+
+- `user_name` is the author's Slack handle, which you can pass back as `@name`, or the raw user ID when it cannot be resolved, or `null` when the message has no user. It is never filled from a bot's name.
+- `bot_id`, `bot_name` and `username` identify a bot. `bot_name` is the name of the bot's profile. `username` is the free-text name a webhook or legacy integration posted under, such as `Build Pipeline`; such a message has no `user_id`.
+- `subtype` is Slack's message subtype, such as `bot_message`, `thread_broadcast` or `channel_join`, and `null` for an ordinary message.
+- `reply_users_count`, `reply_user_ids` and `latest_reply` summarize a thread on its root. `reply_user_ids` lists the raw IDs of the repliers as Slack sends them, which are not resolved to names. In the responses checked, the list was not cut off at a few IDs, and it included `B…` IDs for bots that posted without a user next to the `U…` IDs of people; Slack does not document either. `latest_reply` is the timestamp of the newest reply, also when the replies shown are only a slice of the thread.
 
 With `--with-threads`, each thread root carries its `replies`. When a thread's replies could not be loaded, the root carries `"replies_error": "<slack error code>"` instead, and text output prints `[replies not loaded: <code>]` under it. The command prints every message it has, then exits with 75 when the cause was a rate limit, or 1 for any other error. After a rate limit the remaining threads are not fetched, and they carry the same `replies_error`.
 

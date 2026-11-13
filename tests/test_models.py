@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from typing import Any
 
+import pytest
+from click.testing import Result
+
 from slackcli.blocks import get_message_body_text, get_message_text
-from slackcli.models import Message, format_file_size, resolve_slack_mentions
+from slackcli.models import Message, MessagesOutput, format_file_size, resolve_slack_mentions
+from slackcli.output import output_messages_text
+
+from .conftest import FakeWebClient
 
 
 class TestFormatFileSize:
@@ -178,3 +186,137 @@ class TestMessageAttachments:
         msg = Message.from_api(data, self.USERS, self.CHANNELS, get_message_body_text, resolve_slack_mentions)
         assert msg.text == "Read this: https://example.com"
         assert msg.display_text == "Read this: https://example.com\nExample\nhttps://example.com"
+
+
+class TestMessageBotIdentityAndThreadSummary:
+    """Tests for the bot identity and thread summary fields of Message."""
+
+    USERS: dict[str, str] = {"U0123456789": "alice", "U0987654321": "deploy-bot"}
+    CHANNELS: dict[str, str] = {}
+
+    HUMAN_THREAD_ROOT: dict[str, Any] = {
+        "ts": "1700000000.000100",
+        "user": "U0123456789",
+        "text": "Shall we ship it?",
+        "thread_ts": "1700000000.000100",
+        "reply_count": 4,
+        "reply_users_count": 2,
+        "reply_users": ["U0123456789", "B0123456789"],
+        "latest_reply": "1700003600.000200",
+    }
+
+    WEBHOOK_POST: dict[str, Any] = {
+        "ts": "1700000000.000300",
+        "type": "message",
+        "subtype": "bot_message",
+        "bot_id": "B0123456789",
+        "username": "Build Pipeline",
+        "text": "Build #42 passed",
+    }
+
+    BOT_USER_POST: dict[str, Any] = {
+        "ts": "1700000000.000400",
+        "type": "message",
+        "user": "U0987654321",
+        "bot_id": "B0987654321",
+        "bot_profile": {"id": "B0987654321", "name": "Deploy Bot", "app_id": "A0123456789"},
+        "text": "Deployed",
+    }
+
+    def _message(self, data: dict[str, Any]) -> Message:
+        return Message.from_api(data, self.USERS, self.CHANNELS, get_message_body_text, resolve_slack_mentions)
+
+    def test_human_thread_root_carries_the_thread_summary(self) -> None:
+        result = self._message(self.HUMAN_THREAD_ROOT).to_dict()
+        assert result["user_name"] == "alice"
+        assert result["reply_count"] == 4
+        assert result["reply_users_count"] == 2
+        # Raw IDs, bot IDs included, never resolved to names
+        assert result["reply_user_ids"] == ["U0123456789", "B0123456789"]
+        assert result["latest_reply"] == "1700003600.000200"
+        assert result["bot_id"] is None
+        assert result["bot_name"] is None
+        assert result["username"] is None
+        assert result["subtype"] is None
+
+    def test_webhook_post_carries_bot_identity_without_a_user_name(self) -> None:
+        result = self._message(self.WEBHOOK_POST).to_dict()
+        assert result["user_id"] is None
+        # user_name stays a Slack handle, and a webhook's free-text username is not one
+        assert result["user_name"] is None
+        assert result["username"] == "Build Pipeline"
+        assert result["bot_id"] == "B0123456789"
+        assert result["subtype"] == "bot_message"
+        assert result["bot_name"] is None
+
+    def test_bot_user_post_carries_the_bot_profile_name(self) -> None:
+        result = self._message(self.BOT_USER_POST).to_dict()
+        assert result["user_id"] == "U0987654321"
+        # The bot user's handle and its profile name are separate fields
+        assert result["user_name"] == "deploy-bot"
+        assert result["bot_id"] == "B0987654321"
+        assert result["bot_name"] == "Deploy Bot"
+        assert result["username"] is None
+
+    def test_fields_are_always_present_with_empty_defaults(self) -> None:
+        result = self._message({"ts": "1700000000.000500", "user": "U0123456789", "text": "hi"}).to_dict()
+        assert result["bot_id"] is None
+        assert result["bot_name"] is None
+        assert result["username"] is None
+        assert result["subtype"] is None
+        assert result["latest_reply"] is None
+        assert result["reply_users_count"] == 0
+        assert result["reply_user_ids"] == []
+
+    def test_fields_are_present_on_inline_replies(self) -> None:
+        data = dict(self.HUMAN_THREAD_ROOT, replies=[dict(self.WEBHOOK_POST, thread_ts=self.HUMAN_THREAD_ROOT["ts"])])
+        reply = self._message(data).to_dict()["replies"][0]
+        assert reply["username"] == "Build Pipeline"
+        assert reply["reply_user_ids"] == []
+        assert reply["latest_reply"] is None
+
+    def _render(self, capsys: pytest.CaptureFixture[str], *messages: dict[str, Any]) -> str:
+        output = MessagesOutput(
+            channel_id="C0123456789", channel_name="general", messages=[self._message(m) for m in messages]
+        )
+        output_messages_text(output)
+        return capsys.readouterr().out
+
+    def test_text_shows_a_webhook_username_without_the_at_sign(self, capsys: pytest.CaptureFixture[str]) -> None:
+        header = self._render(capsys, self.WEBHOOK_POST).splitlines()[0]
+        assert header.endswith("  Build Pipeline")
+        assert "@" not in header
+
+    def test_text_falls_back_to_the_bot_profile_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        data = {k: v for k, v in self.BOT_USER_POST.items() if k != "user"}
+        assert self._render(capsys, data).splitlines()[0].endswith("  Deploy Bot")
+
+    def test_text_keeps_the_handle_of_a_bot_user(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert self._render(capsys, self.BOT_USER_POST).splitlines()[0].endswith("  @deploy-bot")
+
+    def test_text_shows_unknown_when_nothing_names_the_author(self, capsys: pytest.CaptureFixture[str]) -> None:
+        data = {"ts": "1700000000.000600", "subtype": "bot_message", "text": "anonymous"}
+        assert self._render(capsys, data).splitlines()[0].endswith("  @(unknown)")
+
+    def test_text_meta_line_shows_the_last_reply(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = self._render(capsys, self.HUMAN_THREAD_ROOT)
+        assert "[4 replies, last reply 2023-11-14 23:13:20, thread_ts=1700000000.000100]" in out
+
+
+def test_messages_list_reports_the_summary_without_resolving_reply_user_ids(
+    run_cli: Callable[..., Result], fake_slack: FakeWebClient
+) -> None:
+    root = dict(TestMessageBotIdentityAndThreadSummary.HUMAN_THREAD_ROOT)
+    del root["user"]
+    root.update(subtype="bot_message", bot_id="B0123456789", username="Build Pipeline")
+    fake_slack.on("conversations.history", {"messages": [root], "has_more": False})
+
+    result = run_cli("messages", "list", "C0123456789", "--json")
+
+    assert result.exit_code == 0, result.stderr
+    message = json.loads(result.stdout)["messages"][0]
+    assert message["reply_user_ids"] == ["U0123456789", "B0123456789"]
+    assert message["username"] == "Build Pipeline"
+    assert message["user_name"] is None
+    # The FakeWebClient fails on any unscripted call, so no users.info call was made for the reply_users IDs
+    assert fake_slack.calls_to("users.info") == []

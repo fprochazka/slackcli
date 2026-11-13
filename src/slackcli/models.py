@@ -203,6 +203,20 @@ class Reaction:
         }
 
 
+def _ts_to_datetime(ts: str) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(float(ts), tz=UTC)
+    except (ValueError, OSError):
+        return None
+
+
+def _format_ts(ts: str) -> str:
+    dt = _ts_to_datetime(ts)
+    if dt is None:
+        return ts
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
 @dataclass
 class Message:
     """Represents a Slack message with resolved user/channel references."""
@@ -219,6 +233,15 @@ class Message:
     attachments: list[Attachment] = field(default_factory=list)
     # Slack error code when the replies were requested (--with-threads) but could not be loaded
     replies_error: str | None = None
+    # Bot identity, as Slack sends it on the message itself; a webhook post has no user at all
+    bot_id: str | None = None
+    subtype: str | None = None
+    username: str | None = None  # free-text display name of a bot_message, not a Slack handle
+    bot_name: str | None = None  # bot_profile.name
+    # Thread summary on a thread root
+    latest_reply: str | None = None
+    reply_users_count: int = 0
+    reply_user_ids: list[str] = field(default_factory=list)  # raw IDs, U… for people and B… for bots
 
     @property
     def display_text(self) -> str:
@@ -228,18 +251,17 @@ class Message:
     @property
     def datetime(self) -> datetime | None:
         """Get the message timestamp as a datetime object."""
-        try:
-            return datetime.fromtimestamp(float(self.ts), tz=UTC)
-        except (ValueError, OSError):
-            return None
+        return _ts_to_datetime(self.ts)
 
     @property
     def datetime_str(self) -> str:
         """Get the message timestamp as a formatted string."""
-        dt = self.datetime
-        if dt is None:
-            return self.ts
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return _format_ts(self.ts)
+
+    @property
+    def latest_reply_str(self) -> str | None:
+        """Get the time of the newest thread reply as a formatted string, or None when there is none."""
+        return _format_ts(self.latest_reply) if self.latest_reply else None
 
     @classmethod
     def from_api(
@@ -270,8 +292,9 @@ class Message:
         text = get_text_func(data, users, channels)
         text = resolve_mentions_func(text, users, channels)
 
-        # Get username
+        # Get username; a bot's free-text username stays in its own field and never becomes a handle
         user_name = users.get(user_id, user_id) if user_id else None
+        bot_profile = data.get("bot_profile") or {}
 
         # Parse reactions
         reactions_data = data.get("reactions", [])
@@ -301,6 +324,13 @@ class Message:
             files=files,
             attachments=attachments,
             replies_error=data.get("replies_error"),
+            bot_id=data.get("bot_id") or None,
+            subtype=data.get("subtype") or None,
+            username=data.get("username") or None,
+            bot_name=bot_profile.get("name") or None,
+            latest_reply=data.get("latest_reply") or None,
+            reply_users_count=data.get("reply_users_count", 0) or 0,
+            reply_user_ids=list(data.get("reply_users") or []),
         )
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
@@ -316,9 +346,16 @@ class Message:
             "ts": self.ts,
             "user_id": self.user_id,
             "user_name": self.user_name,
+            "bot_id": self.bot_id,
+            "bot_name": self.bot_name,
+            "username": self.username,
+            "subtype": self.subtype,
             "text": self.text,
             "thread_ts": self.thread_ts,
             "reply_count": self.reply_count,
+            "reply_users_count": self.reply_users_count,
+            "reply_user_ids": self.reply_user_ids,
+            "latest_reply": self.latest_reply,
             "reactions": [r.to_dict() for r in self.reactions],
             "files": [f.to_dict() for f in self.files],
             "attachments": [a.to_dict() for a in self.attachments],
