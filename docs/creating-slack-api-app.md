@@ -31,6 +31,7 @@ Choose either the **Read-Only** manifest (for viewing messages only) or the **Fu
       "user": [
         "channels:history",
         "channels:read",
+        "emoji:read",
         "groups:history",
         "groups:read",
         "im:history",
@@ -78,6 +79,7 @@ Choose either the **Read-Only** manifest (for viewing messages only) or the **Fu
         "chat:write",
         "dnd:read",
         "dnd:write",
+        "emoji:read",
         "files:read",
         "files:write",
         "groups:history",
