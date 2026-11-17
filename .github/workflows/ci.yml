@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint and type check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,9 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy
 
   test:
     name: Test (Python ${{ matrix.python-version }})

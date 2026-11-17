@@ -39,8 +39,16 @@ ignore = []
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src", "tests"]
+# slack_sdk leaves SlackApiError.__init__ unannotated
+untyped_calls_exclude = ["slack_sdk"]
+
 [dependency-groups]
 dev = [
+    "mypy>=1.15",
     "pytest>=8.0.0",
     "ruff>=0.14.14",
 ]
