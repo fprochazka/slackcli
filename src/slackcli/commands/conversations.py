@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from slack_sdk.errors import SlackApiError
@@ -94,12 +94,12 @@ def fetch_all_conversations(slack: SlackCli, quiet: bool = False) -> list[Conver
             if not response["ok"]:
                 raise SlackApiError(f"API error: {response.get('error', 'unknown')}", response)
 
-            channels = response.get("channels", [])
+            channels: list[dict[str, Any]] = response.get("channels", [])
             for channel_data in channels:
                 conversations.append(Conversation.from_api(channel_data))
 
             # Check for more pages
-            response_metadata = response.get("response_metadata", {})
+            response_metadata: dict[str, Any] = response.get("response_metadata", {})
             cursor = response_metadata.get("next_cursor")
 
             if not cursor:

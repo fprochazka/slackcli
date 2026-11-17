@@ -4,6 +4,7 @@ import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import tomli
 
@@ -93,7 +94,7 @@ class Config:
         raise ValueError(f"Organization '{name}' not found. Available: {self.describe_orgs()}")
 
 
-def _parse_workspaces(org_name: str, org_data: dict) -> list[str]:
+def _parse_workspaces(org_name: str, org_data: dict[str, Any]) -> list[str]:
     """Read the optional 'workspaces' key of one org.
 
     Args:
@@ -161,7 +162,7 @@ def _validate_signature_mode(value: object, source: str) -> str:
     return str(mode)
 
 
-def _parse_agent_signature(data: dict) -> str:
+def _parse_agent_signature(data: dict[str, Any]) -> str:
     """Read the agent signature mode from the environment, then from the config file.
 
     SLACK_AGENT_SIGNATURE wins over the top-level 'agent_signature' key. A variable that
@@ -210,7 +211,7 @@ def _validate_min_request_interval(value: object, source: str) -> float:
     return float(value)
 
 
-def _parse_min_request_interval(data: dict) -> float:
+def _parse_min_request_interval(data: dict[str, Any]) -> float:
     """Read the minimum interval between API calls from the environment, then from the config file.
 
     SLACK_MIN_REQUEST_INTERVAL wins over the top-level 'min_request_interval' key. A variable that

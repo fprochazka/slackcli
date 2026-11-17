@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .logging import console
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         FileAttachment,
         Message,
         MessagesOutput,
+        Reaction,
         ResolvedConversation,
         ResolvedFile,
         ResolvedMessage,
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     from .users import UserInfo
 
 
-def output_json(data: dict) -> None:
+def output_json(data: dict[str, Any]) -> None:
     """Output data as JSON.
 
     Uses plain print() to avoid Rich console formatting.
@@ -90,7 +91,7 @@ def format_message_text(text: str, indent: str = "  ") -> str:
 
 
 def format_reactions(
-    reactions: list,
+    reactions: list[Reaction],
     mode: str,
 ) -> str:
     """Format reactions for text display.

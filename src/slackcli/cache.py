@@ -109,7 +109,8 @@ def load_cache(org_name: str, cache_name: str, version: int) -> dict[str, Any] |
         # Left in place: the next save overwrites it
         return None
 
-    return cache_data
+    current: dict[str, Any] = cache_data
+    return current
 
 
 def save_cache(org_name: str, cache_name: str, data: dict[str, Any], version: int) -> Path:

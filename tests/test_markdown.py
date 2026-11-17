@@ -12,7 +12,8 @@ def convert(text: str) -> list[dict[str, Any]]:
     blocks = markdown_to_blocks(text)
     assert len(blocks) == 1
     assert blocks[0]["type"] == "rich_text"
-    return blocks[0]["elements"]
+    elements: list[dict[str, Any]] = blocks[0]["elements"]
+    return elements
 
 
 def texts(elements: list[dict[str, Any]]) -> str:

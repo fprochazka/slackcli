@@ -24,7 +24,8 @@ def render_rich_text_element(element: dict[str, Any], users: dict[str, str], cha
     elem_type = element.get("type", "")
 
     if elem_type == "text":
-        return element.get("text", "")
+        text: str = element.get("text", "")
+        return text
 
     if elem_type == "user":
         user_id = element.get("user_id", "")
@@ -37,10 +38,10 @@ def render_rich_text_element(element: dict[str, Any], users: dict[str, str], cha
         return f"#{channel_name}"
 
     if elem_type == "link":
-        url = element.get("url", "")
-        text = element.get("text")
-        if text:
-            return f"{text} ({url})"
+        url: str = element.get("url", "")
+        link_text = element.get("text")
+        if link_text:
+            return f"{link_text} ({url})"
         return url
 
     if elem_type == "emoji":
@@ -551,7 +552,8 @@ def get_message_body_text(
             return blocks_text
 
     # Fall back to the plain text field
-    return message.get("text", "").strip()
+    text: str = message.get("text", "")
+    return text.strip()
 
 
 def get_message_text(

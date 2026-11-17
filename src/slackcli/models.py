@@ -654,7 +654,7 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
         return text
 
     # Replace user mentions: <@U0123456789> or <@U0123456789|display_name>
-    def replace_user_mention(match: re.Match) -> str:
+    def replace_user_mention(match: re.Match[str]) -> str:
         user_id = match.group(1)
         username = users.get(user_id, user_id)
         return f"@{username}"
@@ -662,7 +662,7 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
     text = re.sub(r"<@([A-Z0-9]+)(?:\|[^>]*)?>", replace_user_mention, text)
 
     # Replace channel mentions: <#C01234567> or <#C01234567|channel-name>
-    def replace_channel_mention(match: re.Match) -> str:
+    def replace_channel_mention(match: re.Match[str]) -> str:
         channel_id = match.group(1)
         # If the mention includes a name, use it
         channel_name_in_mention = match.group(2)
@@ -675,8 +675,8 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
     text = re.sub(r"<#([A-Z0-9]+)(?:\|([^>]*))?>", replace_channel_mention, text)
 
     # Replace links: <https://example.com|link text> or <https://example.com>
-    def replace_link(match: re.Match) -> str:
-        url = match.group(1)
+    def replace_link(match: re.Match[str]) -> str:
+        url: str = match.group(1)
         link_text = match.group(2)
         if link_text:
             return f"{link_text} ({url})"
@@ -685,8 +685,8 @@ def resolve_slack_mentions(text: str, users: dict[str, str], channels: dict[str,
     text = re.sub(r"<(https?://[^|>]+)(?:\|([^>]*))?>", replace_link, text)
 
     # Replace user group mentions: <!subteam^S123|@team-name> or <!subteam^S123>
-    def replace_subteam(match: re.Match) -> str:
-        team_name = match.group(2)
+    def replace_subteam(match: re.Match[str]) -> str:
+        team_name: str | None = match.group(2)
         if team_name:
             return team_name
         return f"@subteam-{match.group(1)}"

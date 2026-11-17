@@ -126,7 +126,8 @@ def get_error_code(error: SlackApiError) -> str:
     Returns:
         The error code string.
     """
-    return error.response.get("error", str(error))
+    code: str = error.response.get("error", str(error))
+    return code
 
 
 def format_error_with_hint(error: SlackApiError, context: dict[str, str] | None = None) -> tuple[str, str | None]:

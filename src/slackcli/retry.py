@@ -11,6 +11,7 @@ import certifi
 from slack_sdk import WebClient
 from slack_sdk.http_retry import HttpRequest, HttpResponse, RetryHandler, RetryState
 from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
+from slack_sdk.web import SlackResponse
 
 from .errors import api_method_from_url
 from .logging import error_console, get_logger
@@ -120,7 +121,7 @@ class PacedWebClient(WebClient):
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self.pacer = pacer
 
-    def api_call(self, *args: object, **kwargs: object):  # type: ignore[override]
+    def api_call(self, *args: object, **kwargs: object) -> SlackResponse:
         """Wait for the pacer, make the call, and start the next interval when it ends, failed or not."""
         # slack_sdk retries a rate-limited request inside this one call, after its own Retry-After wait,
         # so retries are never paced and a Retry-After wait is never added to the pacing interval.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -108,7 +109,7 @@ class TestPreviewRemovalUpdate:
         assert preview_removal_update(message) == {"text": "Plain body", "clear_attachments": True}
 
 
-def rich_text_block(text: str) -> dict:
+def rich_text_block(text: str) -> dict[str, Any]:
     """Build a rich_text block holding one line of text."""
     return {
         "type": "rich_text",
@@ -461,7 +462,7 @@ class TestComposeMessageSignature:
     def test_malformed_blocks_are_named_not_crashed_on(self) -> None:
         """The blocks are checked before anything tries to render them."""
         with pytest.raises(ComposeError) as excinfo:
-            compose_message(None, blocks=[1, 2], signature=self.FOOTER)
+            compose_message(None, blocks=[1, 2], signature=self.FOOTER)  # type: ignore[list-item]
 
         assert "Block 0 is int" in str(excinfo.value)
 

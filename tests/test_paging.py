@@ -35,7 +35,8 @@ def window_channel() -> list[str]:
 def list_json(run_cli: RunCli, *args: str) -> dict[str, Any]:
     result = run_cli("messages", "list", CHANNEL, *args, "--json")
     assert result.exit_code == 0, result.stderr
-    return json.loads(result.stdout)
+    data: dict[str, Any] = json.loads(result.stdout)
+    return data
 
 
 def window_args(page: dict[str, Any]) -> list[str]:

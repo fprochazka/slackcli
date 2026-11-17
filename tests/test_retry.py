@@ -6,6 +6,7 @@ import json
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 import pytest
 from slack_sdk import WebClient
@@ -27,7 +28,7 @@ class FakeSleep:
         self.waits.append(seconds)
 
 
-def rate_limited_response(headers: dict[str, str] | None = None) -> HttpResponse:
+def rate_limited_response(headers: dict[str, str | list[str]] | None = None) -> HttpResponse:
     return HttpResponse(status_code=429, headers=headers if headers is not None else {"Retry-After": "30"})
 
 
@@ -226,8 +227,13 @@ def test_rate_limit_wait_and_pacing_do_not_add_up(
 
 
 def test_slack_client_gets_the_interval_from_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    created: list[dict] = []
-    monkeypatch.setattr("slackcli.client.create_web_client", lambda **kwargs: created.append(kwargs) or object())
+    created: list[dict[str, Any]] = []
+
+    def fake_create_web_client(**kwargs: Any) -> object:
+        created.append(kwargs)
+        return object()
+
+    monkeypatch.setattr("slackcli.client.create_web_client", fake_create_web_client)
     config = Config(orgs={"acme": OrgConfig(name="acme", token="xoxp-test-token")}, default_org="acme")
     config.min_request_interval = 0.25
 

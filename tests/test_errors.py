@@ -134,7 +134,7 @@ def test_slack_error_escaping_every_handler_is_reported_by_the_entry_point(
         ({}, None),
     ],
 )
-def test_get_retry_after(headers: dict, expected: str | None, make_slack_api_error: MakeError) -> None:
+def test_get_retry_after(headers: dict[str, str], expected: str | None, make_slack_api_error: MakeError) -> None:
     error = make_slack_api_error("ratelimited", method="conversations.history", status_code=429, headers=headers)
 
     assert get_retry_after(error) == expected

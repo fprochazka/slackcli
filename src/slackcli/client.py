@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web import SlackResponse
 
 from .logging import get_logger
 from .retry import create_web_client
@@ -35,15 +36,15 @@ class SlackCli:
             self._client = create_web_client(token=self.token, min_request_interval=self.min_request_interval)
         return self._client
 
-    def _check_response(self, response: dict, operation: str = "API call") -> dict:
+    def _check_response(self, response: SlackResponse, operation: str = "API call") -> SlackResponse:
         """Check if Slack API response is OK, raise SlackApiError if not.
 
         Args:
-            response: The Slack API response dict.
+            response: The Slack API response.
             operation: Description of the operation for error messages.
 
         Returns:
-            The response dict if OK.
+            The response if OK.
 
         Raises:
             SlackApiError: If response["ok"] is False.
@@ -103,7 +104,8 @@ class SlackCli:
         response = self.client.conversations_info(channel=channel_id, include_num_members=True)
         self._check_response(response, "Get conversation info")
 
-        return response["channel"]
+        channel: dict[str, Any] = response["channel"]
+        return channel
 
     def invite_to_conversation(
         self,
@@ -342,7 +344,8 @@ class SlackCli:
             self._check_response(response, "Fetch messages")
 
             # Slack lists every page newest first, whichever way it walks
-            batch = [(ts, m) for m in response.get("messages", []) if (ts := _ts_micros(m.get("ts", ""))) is not None]
+            page: list[dict[str, Any]] = response.get("messages", [])
+            batch = [(ts, m) for m in page if (ts := _ts_micros(m.get("ts", ""))) is not None]
             batch.sort(key=lambda item: item[0], reverse=direction == "tail")
             new_in_page = 0
             for ts, message in batch:
@@ -365,7 +368,8 @@ class SlackCli:
             if new_in_page == 0:
                 logger.debug("Stopping the walk: the page added no new message")
                 break
-            cursor = response.get("response_metadata", {}).get("next_cursor")
+            response_metadata: dict[str, Any] = response.get("response_metadata", {})
+            cursor = response_metadata.get("next_cursor")
             if not cursor or cursor in seen_cursors:
                 if cursor:
                     logger.debug("Stopping the walk: Slack repeated a cursor")
@@ -445,13 +449,13 @@ class SlackCli:
             response = self.client.conversations_replies(**kwargs)
             self._check_response(response, "Fetch thread replies")
 
-            batch = response.get("messages", [])
+            batch: list[dict[str, Any]] = response.get("messages", [])
             all_messages.extend(batch)
 
             if not response.get("has_more", False):
                 break
 
-            response_metadata = response.get("response_metadata", {})
+            response_metadata: dict[str, Any] = response.get("response_metadata", {})
             cursor = response_metadata.get("next_cursor")
             if not cursor:
                 break
@@ -548,7 +552,8 @@ class SlackCli:
 
             if not response.get("has_more", False):
                 break
-            cursor = response.get("response_metadata", {}).get("next_cursor")
+            response_metadata: dict[str, Any] = response.get("response_metadata", {})
+            cursor = response_metadata.get("next_cursor")
             if not cursor:
                 break
 
@@ -577,7 +582,7 @@ class SlackCli:
         )
 
         if response["ok"]:
-            messages = response.get("messages", [])
+            messages: list[dict[str, Any]] = response.get("messages", [])
             if messages:
                 return messages[0]
 
@@ -608,7 +613,7 @@ class SlackCli:
         )
 
         if response["ok"]:
-            messages = response.get("messages", [])
+            messages: list[dict[str, Any]] = response.get("messages", [])
             # Find the exact message by ts
             for msg in messages:
                 if msg.get("ts") == message_ts:
@@ -1125,7 +1130,7 @@ class SlackCli:
         # Extract file info from response
         # files_upload_v2 returns file info in 'file' or 'files' key
         file_info = response.get("file") or {}
-        files = response.get("files", [])
+        files: list[dict[str, Any]] = response.get("files", [])
         if files and not file_info:
             file_info = files[0] if files else {}
 

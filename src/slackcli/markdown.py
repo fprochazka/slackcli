@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from markdown_it import MarkdownIt
@@ -331,10 +332,10 @@ def _render_inline(token: Token | None, base_style: dict[str, bool] | None = Non
         elif kind == "link_open":
             close = _close_index(children, index)
             label = _plain_text(children[index + 1 : close])
-            elements.append(_link_element(child.attrGet("href") or "", label, active_style()))
+            elements.append(_link_element(str(child.attrGet("href") or ""), label, active_style()))
             index = close
         elif kind == "image":
-            elements.append(_link_element(child.attrGet("src") or "", child.content, active_style()))
+            elements.append(_link_element(str(child.attrGet("src") or ""), child.content, active_style()))
 
         index += 1
 
@@ -705,20 +706,18 @@ class _Converter:
                 index = close + 1
             elif kind in ("bullet_list_open", "ordered_list_open"):
                 close = _close_index(self.tokens, index)
-                deferred.append(
-                    lambda open_index=index, close_index=close: self._render_list(open_index, close_index, indent + 1)
-                )
+                deferred.append(partial(self._render_list, index, close, indent + 1))
                 index = close + 1
             elif kind in ("fence", "code_block"):
-                deferred.append(lambda code=token: self._add_preformatted(code))
+                deferred.append(partial(self._add_preformatted, token))
                 index += 1
             elif kind == "table_open":
                 close = _close_index(self.tokens, index)
-                deferred.append(lambda table=token: self._add_table(table))
+                deferred.append(partial(self._add_table, token))
                 index = close + 1
             elif kind == "blockquote_open":
                 close = _close_index(self.tokens, index)
-                deferred.append(lambda quote_start=index + 1, quote_end=close: self._add_quote(quote_start, quote_end))
+                deferred.append(partial(self._add_quote, index + 1, close))
                 index = close + 1
             else:
                 index += 1

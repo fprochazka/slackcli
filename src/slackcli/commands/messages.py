@@ -765,7 +765,7 @@ def send_message(
     logger.debug(f"Resolved target '{target}' to '{channel_id}' ({display_name}, is_dm={is_dm})")
 
     try:
-        results: dict = {
+        results: dict[str, Any] = {
             "ok": True,
             "channel": channel_id,
             "target": display_name,

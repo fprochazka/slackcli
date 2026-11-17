@@ -505,13 +505,14 @@ def fetch_all_users_from_api(slack: SlackCli) -> list[UserInfo]:
         response = slack.client.users_list(**kwargs)
         slack._check_response(response, "List users")
 
-        for user_data in response.get("members", []):
+        members: list[dict[str, Any]] = response.get("members", [])
+        for user_data in members:
             user = UserInfo.from_api(user_data)
             users.append(user)
             save_user_to_cache(slack.org_name, user)
 
         # Check for more pages
-        response_metadata = response.get("response_metadata", {})
+        response_metadata: dict[str, Any] = response.get("response_metadata", {})
         cursor = response_metadata.get("next_cursor")
         if not cursor:
             break
