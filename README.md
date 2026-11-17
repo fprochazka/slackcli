@@ -643,9 +643,14 @@ uv run slack --help
 uv run slack --org=myworkspace conversations list
 ```
 
-### Linting and Formatting
+### Tests, linting and type checking
+
+slackcli needs Python 3.12 or newer. CI runs the same checks as below, with the tests on Python 3.12, 3.13, 3.14 and 3.15.
 
 ```bash
+# Run the tests
+uv run pytest
+
 # Format code
 uv run ruff format .
 
@@ -654,6 +659,9 @@ uv run ruff check .
 
 # Lint and auto-fix
 uv run ruff check --fix .
+
+# Type-check with strict mypy
+uv run mypy
 ```
 
 ### Commit hooks
