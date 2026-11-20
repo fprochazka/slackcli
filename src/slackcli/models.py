@@ -210,6 +210,13 @@ def _ts_to_datetime(ts: str) -> datetime | None:
         return None
 
 
+def _edited(value: Any) -> dict[str, str | None] | None:
+    """The `edited` object of a message row, or None for a message never edited."""
+    if not isinstance(value, dict) or not value.get("ts"):
+        return None
+    return {"ts": str(value["ts"]), "user": value.get("user") or None}
+
+
 def _format_ts(ts: str) -> str:
     dt = _ts_to_datetime(ts)
     if dt is None:
@@ -242,6 +249,8 @@ class Message:
     latest_reply: str | None = None
     reply_users_count: int = 0
     reply_user_ids: list[str] = field(default_factory=list)  # raw IDs, U… for people and B… for bots
+    # When and by whom the message was last edited, as {"ts", "user"}; Slack keeps no earlier text
+    edited: dict[str, str | None] | None = None
 
     @property
     def display_text(self) -> str:
@@ -331,6 +340,7 @@ class Message:
             latest_reply=data.get("latest_reply") or None,
             reply_users_count=data.get("reply_users_count", 0) or 0,
             reply_user_ids=list(data.get("reply_users") or []),
+            edited=_edited(data.get("edited")),
         )
 
     def to_dict(self, include_replies: bool = True) -> dict[str, Any]:
@@ -356,6 +366,7 @@ class Message:
             "reply_users_count": self.reply_users_count,
             "reply_user_ids": self.reply_user_ids,
             "latest_reply": self.latest_reply,
+            "edited": self.edited,
             "reactions": [r.to_dict() for r in self.reactions],
             "files": [f.to_dict() for f in self.files],
             "attachments": [a.to_dict() for a in self.attachments],

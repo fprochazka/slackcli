@@ -267,6 +267,16 @@ class TestMessageBotIdentityAndThreadSummary:
         assert result["latest_reply"] is None
         assert result["reply_users_count"] == 0
         assert result["reply_user_ids"] == []
+        assert result["edited"] is None
+
+    def test_edited_message_carries_when_and_by_whom(self) -> None:
+        data = {
+            "ts": "1700000000.000500",
+            "user": "U0123456789",
+            "text": "hi again",
+            "edited": {"user": "U0123456789", "ts": "1700000060.000000"},
+        }
+        assert self._message(data).to_dict()["edited"] == {"ts": "1700000060.000000", "user": "U0123456789"}
 
     def test_fields_are_present_on_inline_replies(self) -> None:
         data = dict(self.HUMAN_THREAD_ROOT, replies=[dict(self.WEBHOOK_POST, thread_ts=self.HUMAN_THREAD_ROOT["ts"])])

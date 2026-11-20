@@ -617,6 +617,7 @@ Every message carries every field below, `null`, `0` or `[]` when Slack sent not
 
 - `user_name` is the author's Slack handle, which you can pass back as `@name`, or the raw user ID when it cannot be resolved, or `null` when the message has no user. It is never filled from a bot's name.
 - `bot_id`, `bot_name` and `username` identify a bot. `bot_name` is the name of the bot's profile. `username` is the free-text name a webhook or legacy integration posted under, such as `Build Pipeline`; such a message has no `user_id`.
+- `edited` is `{"ts": ..., "user": ...}` for a message that was edited, with the time of the last edit and who made it, and `null` otherwise. Slack keeps no earlier text.
 - `subtype` is Slack's message subtype, such as `bot_message`, `thread_broadcast` or `channel_join`, and `null` for an ordinary message.
 - `reply_users_count`, `reply_user_ids` and `latest_reply` summarize a thread on its root. `reply_user_ids` lists the raw IDs of the repliers as Slack sends them, which are not resolved to names. In the responses checked, the list was not cut off at a few IDs, and it included `B…` IDs for bots that posted without a user next to the `U…` IDs of people; Slack does not document either. `latest_reply` is the timestamp of the newest reply, also when the replies shown are only a slice of the thread.
 
