@@ -159,11 +159,9 @@ Its window is `--since <= ts < --until`. `--after` and `--before` are exclusive.
 
 ## Rate Limits
 
-As of 2025, many endpoints are Tier 1 for non-Marketplace apps (~1 request/minute).
+`conversations.history` and `conversations.replies` are Tier 3, 50+ calls a minute, and Slack limits every method on its own, per app and workspace. A user token and a bot token of the same app share that limit.
 
-Affected endpoints:
-- `conversations.history`
-- `conversations.replies`
+Since 2025-05-29 a commercially distributed app that is not in the Marketplace gets 1 call a minute and at most 15 messages a call on these two methods: apps created after that date, and new installs of older ones ([changelog](https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps)). Internal customer-built apps are not affected and keep 50+ calls a minute and up to 1000 messages a call. The changelog does not define "internal"; an app a workspace creates for itself from the manifest, as slackcli's setup does, is the internal case. The config key `rate_limit = "unlisted"` makes `slack watch` pace itself on the lower limit.
 
 Mitigation strategies:
 - Cache aggressively

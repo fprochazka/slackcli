@@ -23,6 +23,7 @@ This project is **not** affiliated with Slack or Salesforce. If you're looking t
 - Adding and removing reactions
 - Pinning and unpinning messages
 - Scheduling messages for later delivery
+- Watching channels and threads for new, edited and deleted messages
 - Managing and searching users
 - Automating channel exploration
 - Integrating Slack into AI agents and scripts
@@ -86,6 +87,14 @@ min_request_interval = 0.5  # seconds, default 0
 
 `min_request_interval` keeps at least that many seconds between the end of one Slack API call and the start of the next, so a long listing such as `messages list --with-threads` stays under Slack's rate limits instead of running into them. `SLACK_MIN_REQUEST_INTERVAL` takes the same value and wins over the config key; an unset or empty variable leaves the config file in charge. When Slack rate-limits a call anyway, the retry follows the Retry-After wait directly, without the pacing interval added on top. The pacing applies within one process only: two slackcli commands running at the same time each keep their own spacing and can still hit the limit together.
 
+### Rate limit class
+
+```toml
+rate_limit = "internal"  # internal | unlisted, default internal
+```
+
+Since May 2025 Slack gives a commercially distributed app that is not in the Marketplace 1 call a minute, at most 15 messages a call, on `conversations.history` and `conversations.replies`. An internal app, one a workspace built for itself as the [setup guide](docs/creating-slack-api-app.md) describes, keeps 50+ calls a minute. `slack watch` paces itself on the internal limits; set `rate_limit = "unlisted"` when your token belongs to a distributed app, top-level or in one `[orgs.<name>]` table, and each channel or thread watch then polls once a minute. The API offers no way to ask which class an app is in.
+
 ### Workspaces
 
 On Slack Enterprise Grid one token serves the grid org and the workspaces inside it, and each of them has its own host name. Add the extra names under `workspaces` so a single entry answers to all of them:
@@ -125,7 +134,7 @@ claude plugin marketplace update fprochazka-slackcli
 claude plugin update slackcli@fprochazka-slackcli
 ```
 
-Once installed, the skill auto-approves read-only commands (`conversations list`, `messages list`, `search messages`, `users list`, `resolve`, etc.). Write operations (`messages send`, `messages edit`, `reactions add`, etc.) still require manual approval.
+The plugin's `slack-watch` skill teaches the agent to start `slack watch` in the background and react to its messages. Once installed, the skill auto-approves read-only commands (`conversations list`, `messages list`, `search messages`, `users list`, `resolve`, `watch channel`, `watch thread`, etc.). Write operations (`messages send`, `messages edit`, `reactions add`, etc.) still require manual approval.
 
 ## Usage
 
@@ -384,6 +393,32 @@ The file holds either a JSON array of blocks or a Block Kit Builder export, an o
 #### Limits
 
 A message is at most 4000 characters. Slack does not refuse a longer one on send: it silently splits it into several posts and reports only the last part's timestamp, and `messages edit` then rejects it outright. `send`, `edit` and `scheduled create` therefore check the length before calling the API and fail without posting anything, so split a long message yourself, for example into a thread.
+
+### Watching channels and threads
+
+`slack watch` follows channels and threads and reports each new, edited or deleted message as one JSON event per line on stdout, or, under Claude Code, as a message into the session that started it. It only reads Slack.
+
+```bash
+slack watch channel '#general' '#random' C0123456789          # top-level messages and thread broadcasts, never other replies
+slack watch channel '#general' --recheck-window 1h            # notice edits and deletions up to an hour back (default 10m, 0 = none)
+slack watch thread '#general' 1700000000.123456 1700000500.000100   # replies of two threads; the channel applies to the timestamps after it
+slack watch thread 'https://myworkspace.slack.com/archives/C0123456789/p1700000900000200'   # a link carries its own channel
+slack watch channel '#general' --include-own                  # also report your own messages
+slack watch daemon status|stop|logs
+```
+
+A channel watch never reports thread replies, and a thread watch never reports the channel's other messages. A reply also sent to the channel (`thread_broadcast`) is a channel message with `broadcast: true`.
+
+- The watch starts silently: what is in the channel or thread when it starts is the baseline, and only what happens after it is reported. To see what came before, start the watch, wait for its `watch_started` event, then read once with `slack messages list`.
+- Events: `message_posted`, `message_edited`, `message_deleted`, `messages_skipped`, and `channel_event` for joins, topic and name changes and pins. `channel_event` is left out unless `--events` names it (`--events=messages,system`). `--events` / `--exclude-events` take kinds or the groups `messages` and `system`; `--until`, `--timeout` and `--idle-after` end a watch early. The token's own messages are left out unless `--include-own` is given.
+- A message event carries `message`, the same object `messages list --json` prints, plus `channel`, `channel_name`, `permalink`, `broadcast` and `own`; an edit also carries `edited` (`ts`, `user`, `user_name`). Slack keeps no earlier text of an edited message, so an edit shows only the new text. A deletion carries the `ts`, the author and the last text the watch saw.
+- Slack reports no edits or deletions in channel history. A channel watch finds them by reading the last `--recheck-window` of the channel again on every poll, so an edit or deletion of an older message is not reported. A thread watch reads the whole thread every poll and sees every edit and deletion.
+- A channel watch ends when the channel is archived or the token loses access to it (`not_in_channel` for a bot that is not invited); a thread watch ends when the thread is gone. Otherwise both run until stopped.
+- After a sleep, a channel watch reads forward from the last message it saw. Up to 50 missed messages are reported one by one; more become one `messages_skipped` with the count and the oldest and newest ts, so you can read them with `slack messages list --after <ts>`.
+- All watches on the machine share one daemon, which polls each channel and thread once for all its watchers, every 20 s. Slack limits each API method on its own, per app and workspace, so channels and threads have separate budgets: at most 25 calls a minute each, half of Slack's Tier 3 limit, to leave room for your other `slack` commands. Up to 8 channels poll every 20 s; with more, every channel polls less often (20 channels every 48 s). A rate-limited call blocks only its own method. `--no-daemon` polls inside the watcher instead.
+- Files: `<base>/<org>/channels/<C…>` and `<base>/<org>/threads/<C…>-<ts>`, each with `events.jsonl`, `state.json` and `baseline.json`. The base is the Claude Code session's scratchpad, else a temp dir, or `--base-dir`.
+
+Built on [cli-watch-kit](https://github.com/fprochazka/cli-watch-kit).
 
 ### Reactions
 
@@ -693,6 +728,7 @@ src/slackcli/
 ├── logging.py          # Logging setup
 ├── errors.py           # Custom exceptions
 ├── retry.py            # Retry utilities for API calls
+├── watch/              # `slack watch`, on cli-watch-kit (source, diff, CLI, daemon)
 └── commands/
     ├── conversations.py  # Conversation list/filter
     ├── messages.py       # List, send, edit, delete messages

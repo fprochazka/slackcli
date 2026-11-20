@@ -333,3 +333,27 @@ def test_slack_config_shows_the_interval_and_its_source(
     assert result.exit_code == 0
     assert '"min_request_interval": 0.25' in result.stdout
     assert "Using min_request_interval from SLACK_MIN_REQUEST_INTERVAL: 0.25" in result.stdout
+
+
+class TestRateLimit:
+    """Tests for the rate_limit key, top-level and per org."""
+
+    def test_defaults_to_internal(self, tmp_path: Path) -> None:
+        config = load_config(write_config(tmp_path, ONE_ORG))
+
+        assert config.rate_limit_for(config.get_org("acme")) == "internal"
+
+    def test_top_level_key_applies_to_every_org(self, tmp_path: Path) -> None:
+        config = load_config(write_config(tmp_path, f'rate_limit = "Unlisted"\n{ONE_ORG}'))
+
+        assert config.rate_limit_for(config.get_org("acme")) == "unlisted"
+
+    def test_org_key_wins_over_the_top_level_one(self, tmp_path: Path) -> None:
+        content = f'rate_limit = "unlisted"\n{ONE_ORG}rate_limit = "internal"\n'
+        config = load_config(write_config(tmp_path, content))
+
+        assert config.rate_limit_for(config.get_org("acme")) == "internal"
+
+    def test_unknown_value_is_refused(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="expected one of internal, unlisted"):
+            load_config(write_config(tmp_path, f'rate_limit = "marketplace"\n{ONE_ORG}'))

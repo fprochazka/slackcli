@@ -18,6 +18,9 @@ AGENT_SIGNATURE_ENV_VAR = "SLACK_AGENT_SIGNATURE"
 # Overrides the top-level 'min_request_interval' key of the config file.
 MIN_REQUEST_INTERVAL_ENV_VAR = "SLACK_MIN_REQUEST_INTERVAL"
 
+# Which Slack rate limits the app of a token gets for conversations.history and conversations.replies.
+RATE_LIMIT_CLASSES = ("internal", "unlisted")
+
 
 @dataclass
 class OrgConfig:
@@ -26,6 +29,8 @@ class OrgConfig:
     name: str
     token: str
     workspaces: list[str] = field(default_factory=list)
+    # The org's own 'rate_limit', or None to use the top-level key.
+    rate_limit: str | None = None
 
 
 @dataclass
@@ -40,6 +45,12 @@ class Config:
     agent_signature: str = "marketing"
     # Seconds kept between the end of one Slack API call and the start of the next; 0 turns pacing off.
     min_request_interval: float = 0.0
+    # Slack's limits for conversations.history and conversations.replies: "internal" (50+/min) or "unlisted" (1/min).
+    rate_limit: str = "internal"
+
+    def rate_limit_for(self, org: OrgConfig) -> str:
+        """The rate-limit class of an org: its own 'rate_limit' key, else the top-level one."""
+        return org.rate_limit or self.rate_limit
 
     def describe_orgs(self) -> str:
         """Describe the configured orgs and their workspace names.
@@ -234,6 +245,25 @@ def _parse_min_request_interval(data: dict[str, Any]) -> float:
     return _validate_min_request_interval(data.get("min_request_interval", 0), "'min_request_interval'")
 
 
+def _parse_rate_limit(value: object, source: str) -> str:
+    """Check one 'rate_limit' value.
+
+    Args:
+        value: The raw TOML value.
+        source: How the value is named in the error message.
+
+    Returns:
+        The class, lower-cased and trimmed.
+
+    Raises:
+        ValueError: If the value is not one of the known classes.
+    """
+    mode = value.strip().lower() if isinstance(value, str) else value
+    if mode not in RATE_LIMIT_CLASSES:
+        raise ValueError(f"Invalid {source}: expected one of {', '.join(RATE_LIMIT_CLASSES)}")
+    return str(mode)
+
+
 def load_config(config_path: Path | None = None) -> Config:
     """Load configuration from TOML file.
 
@@ -264,6 +294,7 @@ def load_config(config_path: Path | None = None) -> Config:
     config.default_org = data.get("default_org")
     config.agent_signature = _parse_agent_signature(data)
     config.min_request_interval = _parse_min_request_interval(data)
+    config.rate_limit = _parse_rate_limit(data.get("rate_limit", "internal"), "'rate_limit'")
 
     orgs_data = data.get("orgs", {})
     for org_name, org_data in orgs_data.items():
@@ -278,6 +309,11 @@ def load_config(config_path: Path | None = None) -> Config:
             name=org_name,
             token=token,
             workspaces=_parse_workspaces(org_name, org_data),
+            rate_limit=(
+                _parse_rate_limit(org_data["rate_limit"], f"'rate_limit' of org '{org_name}'")
+                if "rate_limit" in org_data
+                else None
+            ),
         )
 
     config.workspace_index = _build_workspace_index(config.orgs)

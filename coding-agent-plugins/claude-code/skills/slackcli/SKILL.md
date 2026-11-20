@@ -215,6 +215,10 @@ slack messages delete '#channel' 1234567890.123456         # With confirmation
 slack messages delete '#channel' 1234567890.123456 --force # Skip confirmation
 ```
 
+## Waiting for Messages
+
+To wait for a reply or react to new messages in a channel or thread, use `slack watch` (the `slack-watch` skill), never a loop of `messages list` calls.
+
 ## Search
 
 ### Search Messages

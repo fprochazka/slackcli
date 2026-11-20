@@ -49,6 +49,19 @@ app.add_typer(files.app, name="files")
 app.command("resolve")(resolve.resolve_command)
 
 
+@app.command(
+    "watch",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    add_help_option=False,
+)
+def watch_command(ctx: typer.Context) -> None:
+    """Follow channels and threads and report new, edited and deleted messages (see slack watch --help)."""
+    # `slack watch` is a click group of cli-watch-kit; it is imported only when used and gets the arguments as given.
+    from .watch.cli import watch
+
+    watch.main(args=list(ctx.args), prog_name="slack watch", standalone_mode=True)
+
+
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
