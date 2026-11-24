@@ -420,6 +420,14 @@ A channel watch never reports thread replies, and a thread watch never reports t
 
 Built on [cli-watch-kit](https://github.com/fprochazka/cli-watch-kit).
 
+#### bypassPermissions sessions
+
+Claude Code holds a message for its user's approval when the receiving session runs in `bypassPermissions` mode and cannot verify the sender. The events then show up as "Held peer message … The sender did not attest its permission mode" instead of reaching the model. Sessions in other modes, auto included, deliver them.
+
+Start `slack watch` from the receiving session's own Bash tool. Claude Code delivers messages from its own child processes even in bypass mode: on Linux it checks the process tree, and on macOS and in containers where `claude` runs as PID 1 the watcher also proves it with the session's `CLAUDE_CODE_MESSAGING_TOKEN`, which cc-blackbox 0.14.1 and later sends. A watcher started from another terminal or another session stays held.
+
+If the events are still held, avoid setting `"crossSessionInbound": "accept"` in your user settings. It lets every bypass session take messages from any local sender, other Claude Code sessions included, so a session that read untrusted input, such as a Slack message, could drive one that runs commands without asking. Limit it to one run with `claude --settings '{"crossSessionInbound":"accept"}'`, or run the watching session in auto mode. See [cross-session messaging](https://code.claude.com/docs/en/cross-session-messaging) and [`crossSessionInbound`](https://code.claude.com/docs/en/settings-reference#crosssessioninbound).
+
 ### Reactions
 
 ```bash

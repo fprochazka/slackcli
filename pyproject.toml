@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "certifi>=2024.0.0",
-    "cli-watch-kit[claude-code]>=0.2.1,<0.3",
+    "cli-watch-kit[claude-code]>=0.2.3,<0.3",
     "markdown-it-py>=3.0.0",
     "rich>=14.3.2",
     "slack-sdk>=3.39.0",

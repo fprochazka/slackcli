@@ -72,14 +72,14 @@ wheels = [
 
 [[package]]
 name = "cc-blackbox"
-version = "0.12.0"
+version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/ef/90455eb34c669f5a53e920ac04d4a2d1b7f42905b197e33f786ae3a07df2/cc_blackbox-0.12.0.tar.gz", hash = "sha256:72e1fdf22ad56cbbf0ebb60aac0269e9ace34fbe41f612778266e4a2a9f4fa0e", size = 193812, upload-time = "2026-11-18T14:49:31.835Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/fd/7c9da7ea441cc1cc8952794cb2f6c86b9ac2e6e79b9fd26ff75e1bfe2bac/cc_blackbox-0.14.1.tar.gz", hash = "sha256:375174a9b52b11135c0db36f46d497257f5077d0dbfb36362f77ad26cad7b27e", size = 203356, upload-time = "2026-11-24T17:31:51.96Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/7e/26517c36136184c3b931cbbd576e2406771ed6f2d3d407d01046e1196b12/cc_blackbox-0.12.0-py3-none-any.whl", hash = "sha256:0a2f5438b38e8bc2af2853839d78e646ca2c1a6c4ff5a0b041f8242adae9ef3a", size = 120736, upload-time = "2026-11-18T14:49:30.074Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/97/3c885c670b566147db43c8241310ce213309c565a45ea3832b55e9cde01c/cc_blackbox-0.14.1-py3-none-any.whl", hash = "sha256:7238692bc60a40e580c9ca2958a3f7f437a671e3842b40c31dcd218ed98549c3", size = 127222, upload-time = "2026-11-24T17:31:50.459Z" },
 ]
 
 [[package]]
@@ -93,14 +93,14 @@ wheels = [
 
 [[package]]
 name = "cli-watch-kit"
-version = "0.2.1"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/e3/bb4713f9e4544e405d92e20dcf6c647f290b07b4dea1cbdbea81fd24dd0c/cli_watch_kit-0.2.1.tar.gz", hash = "sha256:87f3f1f8c88d5a99bcf9cbe6f2cc7baba24e5355ae5753c274cde7d69bd47917", size = 135854, upload-time = "2026-11-20T15:39:01.734Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/a1/3db87698f950deed072aacc61348a7b63b4fafe0acfa32589b793fb6ec0c/cli_watch_kit-0.2.3.tar.gz", hash = "sha256:8be2529e96fe2a9c782d0d957b5552600cd9fbc538aef2ae857cfca77d2ac934", size = 136397, upload-time = "2026-11-24T17:49:30.693Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/11/372ee943fa04aa8f359ece4638833772344ac2c7bea868af52260ea3151f/cli_watch_kit-0.2.1-py3-none-any.whl", hash = "sha256:40bbbafd7cb3205fe07ba0f50879951f3d0cdeb2bb310c2afe2835e55c010aa7", size = 79861, upload-time = "2026-11-20T15:38:59.867Z" },
+    { url = "https://files.pythonhosted.org/packages/95/04/9292c3ada8908e93e77fd6b00ead6bc87b0e933248d1913ce483bee420eb/cli_watch_kit-0.2.3-py3-none-any.whl", hash = "sha256:a630bd68a86d2d1cd36367e4ee003b8249f24c87224ab188f34071bea1ff840b", size = 80401, upload-time = "2026-11-24T17:49:29.143Z" },
 ]
 
 [package.optional-dependencies]
@@ -502,7 +502,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "certifi", specifier = ">=2024.0.0" },
-    { name = "cli-watch-kit", extras = ["claude-code"], specifier = ">=0.2.1,<0.3" },
+    { name = "cli-watch-kit", extras = ["claude-code"], specifier = ">=0.2.3,<0.3" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "rich", specifier = ">=14.3.2" },
     { name = "slack-sdk", specifier = ">=3.39.0" },
